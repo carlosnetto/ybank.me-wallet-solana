@@ -1,0 +1,7 @@
+{
+  "name": "YBank.me Wallet",
+  "description": "You are the bank. Secure Base blockchain wallet.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

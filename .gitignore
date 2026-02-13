@@ -1,0 +1,33 @@
+# 1. Dependencies
+node_modules/
+/jspm_packages
+
+# 2. Build Output
+dist/
+dist-ssr/
+*.local/
+out/
+build/
+
+# 3. Environment Variables (Security)
+.env
+.env*.local
+
+# 4. Editor Specific Files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 5. Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
