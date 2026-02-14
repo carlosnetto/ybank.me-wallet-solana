@@ -1,86 +1,133 @@
-import { ethers } from 'ethers';
-import { BASE_RPC_URL, USDC_ADDRESS_BASE, Transaction } from '../types';
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  Transaction as SolanaTransaction,
+  sendAndConfirmTransaction,
+} from '@solana/web3.js';
+import {
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
+  getAccount,
+} from '@solana/spl-token';
+import * as bip39 from 'bip39';
+import { derivePath } from 'ed25519-hd-key';
+import { SOLANA_RPC_URL, USDC_MINT_SOLANA, Transaction } from '../types';
 
-// ERC20 ABI with Transfer event
-const ERC20_ABI = [
-  "function balanceOf(address owner) view returns (uint256)",
-  "function decimals() view returns (uint8)",
-  "function transfer(address to, uint amount) returns (bool)",
-  "event Transfer(address indexed from, address indexed to, uint256 value)"
-];
+const USDC_MINT = new PublicKey(USDC_MINT_SOLANA);
+const USDC_DECIMALS = 6;
+const DERIVATION_PATH = "m/44'/501'/0'/0'";
 
-// Singleton provider instance to avoid connection churn and rate limits
-let providerInstance: ethers.JsonRpcProvider | null = null;
+// Singleton connection instance
+let connectionInstance: Connection | null = null;
 
-export const getProvider = () => {
-  if (!providerInstance) {
-    // 1rpc.io is generally reliable for Base mainnet free tier
-    providerInstance = new ethers.JsonRpcProvider('https://1rpc.io/base', 8453, { 
-      staticNetwork: true,
-      batchMaxCount: 1 
-    });
+export const getConnection = (): Connection => {
+  if (!connectionInstance) {
+    connectionInstance = new Connection(SOLANA_RPC_URL, 'confirmed');
   }
-  return providerInstance;
+  return connectionInstance;
 };
 
 export const validateMnemonic = (phrase: string): boolean => {
-  return ethers.Mnemonic.isValidMnemonic(phrase);
+  return bip39.validateMnemonic(phrase);
 };
 
-export const getWalletFromMnemonic = (phrase: string) => {
-  const wallet = ethers.Wallet.fromPhrase(phrase);
-  return wallet.connect(getProvider());
+export const getKeypairFromMnemonic = (phrase: string): Keypair => {
+  const seed = bip39.mnemonicToSeedSync(phrase);
+  const derivedSeed = derivePath(DERIVATION_PATH, seed.toString('hex')).key;
+  return Keypair.fromSeed(derivedSeed);
 };
 
-export const getETHBalance = async (address: string): Promise<string> => {
+export const getSOLBalance = async (address: string): Promise<string> => {
   try {
-    const provider = getProvider();
-    const balance = await provider.getBalance(address);
-    return ethers.formatEther(balance);
+    const connection = getConnection();
+    const pubkey = new PublicKey(address);
+    const balance = await connection.getBalance(pubkey);
+    // Lamports to SOL (10^9)
+    return (balance / 1e9).toFixed(9);
   } catch (error) {
-    console.error("Error fetching ETH balance:", error);
+    console.error("Error fetching SOL balance:", error);
     return "0.00";
   }
 };
 
 export const getUSDCBalance = async (address: string): Promise<string> => {
   try {
-    const provider = getProvider();
-    const contract = new ethers.Contract(USDC_ADDRESS_BASE, ERC20_ABI, provider);
-    
-    // Optimization: USDC always has 6 decimals. 
-    // We hardcode it to avoid an extra RPC call which was causing failures.
-    const decimals = 6; 
-    
-    const balance = await contract.balanceOf(address);
-    return ethers.formatUnits(balance, decimals);
+    const connection = getConnection();
+    const ownerPubkey = new PublicKey(address);
+    const ata = await getAssociatedTokenAddress(USDC_MINT, ownerPubkey);
+
+    try {
+      const accountInfo = await getAccount(connection, ata);
+      // Convert from atomic units (6 decimals) to human-readable
+      const balance = Number(accountInfo.amount) / Math.pow(10, USDC_DECIMALS);
+      return balance.toFixed(2);
+    } catch {
+      // Token account doesn't exist yet — balance is 0
+      return "0.00";
+    }
   } catch (error) {
-    // Log as warning to reduce noise, since retries happen automatically via polling
     console.warn("Error fetching USDC balance:", error);
     return "0.00";
   }
 };
 
-export const sendUSDC = async (wallet: ethers.Signer, to: string, amount: string): Promise<string> => {
-  const contract = new ethers.Contract(USDC_ADDRESS_BASE, ERC20_ABI, wallet);
-  const decimals = 6; // Hardcoded for USDC on Base
-  const amountInUnits = ethers.parseUnits(amount, decimals);
-  
+export const sendUSDC = async (
+  keypair: Keypair,
+  to: string,
+  amount: string
+): Promise<string> => {
+  const connection = getConnection();
+  const recipientPubkey = new PublicKey(to);
+  const senderPubkey = keypair.publicKey;
+
+  // Convert amount to atomic units
+  const amountInUnits = Math.round(parseFloat(amount) * Math.pow(10, USDC_DECIMALS));
+
   try {
-    const tx = await contract.transfer(to, amountInUnits);
-    await tx.wait(); // Wait for confirmation
-    return tx.hash;
+    // Get associated token accounts
+    const senderAta = await getAssociatedTokenAddress(USDC_MINT, senderPubkey);
+    const recipientAta = await getAssociatedTokenAddress(USDC_MINT, recipientPubkey);
+
+    const transaction = new SolanaTransaction();
+
+    // Check if recipient ATA exists, create if needed
+    try {
+      await getAccount(connection, recipientAta);
+    } catch {
+      // Recipient ATA doesn't exist — create it (sender pays for account creation)
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          senderPubkey,    // payer
+          recipientAta,    // associated token account
+          recipientPubkey, // owner
+          USDC_MINT        // mint
+        )
+      );
+    }
+
+    // Add transfer instruction
+    transaction.add(
+      createTransferInstruction(
+        senderAta,     // source
+        recipientAta,  // destination
+        senderPubkey,  // owner/authority
+        amountInUnits  // amount in atomic units
+      )
+    );
+
+    const signature = await sendAndConfirmTransaction(connection, transaction, [keypair]);
+    return signature;
   } catch (error: any) {
     console.error("Send Transaction Error:", error);
-    
-    // Handle specific ethers.js errors
-    if (error.code === 'INSUFFICIENT_FUNDS' || (error.info && error.info.error && error.info.error.code === -32003)) {
-      throw new Error("Insufficient ETH for gas fees. Please deposit Base ETH.");
+
+    if (error.message?.includes('insufficient lamports')) {
+      throw new Error("Insufficient SOL for transaction fees. Please deposit SOL.");
     }
-    
-    // Handle generic execution revert
-    if (error.code === 'CALL_EXCEPTION') {
-       throw new Error("Transaction failed. Ensure you have enough USDC and ETH.");
+
+    if (error.message?.includes('insufficient funds')) {
+      throw new Error("Insufficient USDC balance.");
     }
 
     throw new Error(error.message || "Transaction failed. Please check your connection and balance.");
@@ -89,107 +136,88 @@ export const sendUSDC = async (wallet: ethers.Signer, to: string, amount: string
 
 export const getRecentTransactions = async (address: string): Promise<Transaction[]> => {
   try {
-    const provider = getProvider();
-    const contract = new ethers.Contract(USDC_ADDRESS_BASE, ERC20_ABI, provider);
-    
-    // Base block time is ~2 seconds.
-    // 7,500 blocks is ~4.1 hours. This is much faster than scanning days.
-    const SCAN_RANGE = 7500;
-    const CHUNK_SIZE = 2500; 
+    const connection = getConnection();
+    const ownerPubkey = new PublicKey(address);
 
-    const currentBlock = await provider.getBlockNumber();
-    const fromBlock = Math.max(0, currentBlock - SCAN_RANGE); 
+    // Get the associated token account for USDC
+    const ata = await getAssociatedTokenAddress(USDC_MINT, ownerPubkey);
 
-    const filterIn = contract.filters.Transfer(null, address);
-    const filterOut = contract.filters.Transfer(address, null);
+    // Fetch recent signatures for the token account
+    const signatures = await connection.getSignaturesForAddress(ata, { limit: 20 });
 
-    // Helper to fetch logs in chunks to respect RPC limits
-    const fetchLogsChunked = async (filter: any) => {
-      let allLogs: ethers.EventLog[] = [];
-      // Use a functional approach to create ranges
-      const ranges = [];
-      for (let i = fromBlock; i < currentBlock; i += CHUNK_SIZE) {
-        ranges.push({
-          from: i,
-          to: Math.min(i + CHUNK_SIZE - 1, currentBlock)
-        });
-      }
+    if (signatures.length === 0) return [];
 
-      // Execute chunks in parallel (groups of 3) to speed up fetching
-      const BATCH_SIZE = 3;
-      for (let i = 0; i < ranges.length; i += BATCH_SIZE) {
-        const batch = ranges.slice(i, i + BATCH_SIZE);
-        const results = await Promise.all(
-           batch.map(range => 
-             contract.queryFilter(filter, range.from, range.to)
-               .catch(e => {
-                 console.warn(`Error logs range ${range.from}-${range.to}:`, e);
-                 return [];
-               })
-           )
-        );
-        results.forEach(chunk => {
-            allLogs = [...allLogs, ...chunk as ethers.EventLog[]];
-        });
-      }
-      return allLogs;
-    };
+    // Fetch parsed transactions in batches
+    const transactions: Transaction[] = [];
+    const BATCH_SIZE = 5;
 
-    const [logsIn, logsOut] = await Promise.all([
-      fetchLogsChunked(filterIn),
-      fetchLogsChunked(filterOut)
-    ]);
+    for (let i = 0; i < signatures.length; i += BATCH_SIZE) {
+      const batch = signatures.slice(i, i + BATCH_SIZE);
+      const parsedTxs = await Promise.all(
+        batch.map(sig =>
+          connection.getParsedTransaction(sig.signature, {
+            maxSupportedTransactionVersion: 0,
+          }).catch(() => null)
+        )
+      );
 
-    // Combine logs
-    const allLogs = [...logsIn, ...logsOut] as ethers.EventLog[];
-    
-    // Deduplicate logs based on transaction hash and log index
-    const uniqueLogsMap = new Map<string, ethers.EventLog>();
-    allLogs.forEach(log => {
-      const key = `${log.transactionHash}-${log.index}`;
-      uniqueLogsMap.set(key, log);
-    });
-    const uniqueLogs = Array.from(uniqueLogsMap.values());
+      for (let j = 0; j < parsedTxs.length; j++) {
+        const parsedTx = parsedTxs[j];
+        const sigInfo = batch[j];
 
-    // Fetch timestamps for blocks
-    const blockNumbers = [...new Set(uniqueLogs.map(l => l.blockNumber))];
-    const blockMap: Record<number, number> = {};
-    
-    // Increased chunk size for block details since getBlock is usually lighter
-    const requestChunkSize = 10; 
-    for (let i = 0; i < blockNumbers.length; i += requestChunkSize) {
-      const chunk = blockNumbers.slice(i, i + requestChunkSize);
-      await Promise.all(chunk.map(async (bn) => {
-        try {
-          const block = await provider.getBlock(bn);
-          if (block) blockMap[bn] = block.timestamp * 1000;
-        } catch (e) {
-          console.error("Error fetching block", bn, e);
+        if (!parsedTx?.meta || parsedTx.meta.err) continue;
+
+        // Look for SPL token transfer instructions
+        const instructions = parsedTx.transaction.message.instructions;
+        for (const ix of instructions) {
+          if ('parsed' in ix && ix.program === 'spl-token') {
+            const parsed = ix.parsed;
+            if (parsed.type === 'transfer' || parsed.type === 'transferChecked') {
+              const info = parsed.info;
+
+              // Determine direction based on source/destination ATA
+              const source = info.source || info.authority;
+              const destination = info.destination;
+
+              // Get the actual token amount
+              let tokenAmount: number;
+              if (parsed.type === 'transferChecked') {
+                tokenAmount = parseFloat(info.tokenAmount?.uiAmountString || '0');
+              } else {
+                tokenAmount = Number(info.amount) / Math.pow(10, USDC_DECIMALS);
+              }
+
+              if (tokenAmount <= 0) continue;
+
+              const isIncoming = destination === ata.toBase58();
+
+              transactions.push({
+                hash: sigInfo.signature,
+                type: isIncoming ? 'in' : 'out',
+                amount: tokenAmount.toFixed(2),
+                timestamp: (sigInfo.blockTime || Math.floor(Date.now() / 1000)) * 1000,
+                status: 'confirmed',
+                from: source,
+                to: destination,
+              });
+
+              break; // Only count one transfer per transaction
+            }
+          }
         }
-      }));
+      }
     }
 
-    const transactions: Transaction[] = uniqueLogs.map(log => {
-      // Event args: [from, to, value]
-      const amount = ethers.formatUnits(log.args[2], 6); // USDC has 6 decimals
-      const isIn = log.args[1].toLowerCase() === address.toLowerCase();
-      
-      return {
-        hash: log.transactionHash,
-        type: (isIn ? 'in' : 'out') as 'in' | 'out',
-        amount: amount,
-        timestamp: blockMap[log.blockNumber] || Date.now(),
-        status: 'confirmed' as 'confirmed',
-        from: log.args[0],
-        to: log.args[1]
-      };
-    })
-    // Filter out zero value transactions
-    .filter(tx => parseFloat(tx.amount) > 0);
+    // Deduplicate by signature
+    const seen = new Set<string>();
+    const unique = transactions.filter(tx => {
+      if (seen.has(tx.hash)) return false;
+      seen.add(tx.hash);
+      return true;
+    });
 
     // Sort by time descending
-    return transactions.sort((a, b) => b.timestamp - a.timestamp);
-
+    return unique.sort((a, b) => b.timestamp - a.timestamp);
   } catch (error) {
     console.warn("Error fetching history:", error);
     return [];

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ethers } from 'ethers';
+import { PublicKey } from '@solana/web3.js';
 import { Loader2, Camera, X, Check, ArrowRight, DollarSign, Save, ChevronLeft, AlertCircle, Eye, EyeOff, Copy, ExternalLink, Plus, Minus, ShoppingBag, Info } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getRecentTransactions } from '../services/walletService';
@@ -48,6 +48,14 @@ export const SendView: React.FC<SendProps> = ({ onSend, onCancel, balance }) => 
       return;
     }
 
+    // Validate Solana address
+    try {
+      new PublicKey(to);
+    } catch {
+      setError("Invalid Solana address");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -83,7 +91,7 @@ export const SendView: React.FC<SendProps> = ({ onSend, onCancel, balance }) => 
           <label className="block text-sm font-medium text-gray-700 mb-2">Recipient Address</label>
           <input
             type="text"
-            placeholder="0x..."
+            placeholder="Solana address..."
             value={to}
             onChange={(e) => setTo(e.target.value)}
             className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-4 font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
@@ -267,14 +275,14 @@ export const PayView: React.FC<PayProps> = ({ onCancel, onPay, address }) => {
       // Pay 100 times less as requested for testing
       const amountToPay = (totalAmount / 100).toFixed(2);
 
-      // Find the payment method for USDC on the Base network
-      const baseMethod = paymentData.paymentMethods?.find((m: any) =>
-        m.currency === "USDC" && m.networks?.Base?.address
+      // Find the payment method for USDC on the Solana network
+      const solanaMethod = paymentData.paymentMethods?.find((m: any) =>
+        m.currency === "USDC" && m.networks?.Solana?.address
       );
-      const recipient = baseMethod?.networks?.Base?.address;
+      const recipient = solanaMethod?.networks?.Solana?.address;
 
       if (!recipient) {
-        throw new Error(`USDC on Base not supported by ${merchantName}`);
+        throw new Error(`USDC on Solana not supported by ${merchantName}`);
       }
 
       // Convert USD cents to USDC atomic units (6 decimals)
@@ -288,7 +296,7 @@ export const PayView: React.FC<PayProps> = ({ onCancel, onPay, address }) => {
           amount: amountUSDC,
           tipAmount: tipAmountUSDC,
           currency: "USDC",
-          network: "Base"
+          network: "Solana"
         },
         payer: {
           info: "illnottellyou@gmail.com",
@@ -365,12 +373,12 @@ export const PayView: React.FC<PayProps> = ({ onCancel, onPay, address }) => {
 
         {txHash && (
           <a
-            href={`https://basescan.org/tx/${txHash}`}
+            href={`https://solscan.io/tx/${txHash}`}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-2 text-blue-600 text-sm font-medium mb-8 hover:underline"
           >
-            View on Basescan <ExternalLink className="w-4 h-4" />
+            View on Solscan <ExternalLink className="w-4 h-4" />
           </a>
         )}
 
@@ -645,8 +653,7 @@ export const ChargeView: React.FC<ChargeProps> = ({ onCancel, address, merchantS
       console.log('💰 Amount in cents:', amountCents);
 
       // USDC amount in atomic units (6 decimals)
-      // We convert to String immediately because JSON.stringify fails on BigInt
-      const usdcAtomic = ethers.parseUnits(amount, 6).toString();
+      const usdcAtomic = Math.round(parseFloat(amount) * 1e6);
 
       const payload = {
         creditor: {
@@ -686,9 +693,9 @@ export const ChargeView: React.FC<ChargeProps> = ({ onCancel, address, merchantS
         paymentMethods: [
           {
             currency: "USDC",
-            amount: Number(usdcAtomic),
+            amount: usdcAtomic,
             networks: {
-              "Base": {
+              "Solana": {
                 address: address
               }
             }
@@ -866,7 +873,7 @@ export const SettingsView: React.FC<SettingsProps> = ({ onBack, settings, onUpda
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    const savedMnemonic = localStorage.getItem('base_wallet_mnemonic');
+    const savedMnemonic = localStorage.getItem('solana_wallet_mnemonic');
     setMnemonic(savedMnemonic);
   }, []);
 

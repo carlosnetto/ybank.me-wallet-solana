@@ -25,9 +25,9 @@ export interface WalletState {
   address: string;
   mnemonic: string | null;
   balance: string;
-  ethBalance: string;
+  solBalance: string;
   transactions: Transaction[];
 }
 
-export const USDC_ADDRESS_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-export const BASE_RPC_URL = 'https://mainnet.base.org';
+export const USDC_MINT_SOLANA = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';

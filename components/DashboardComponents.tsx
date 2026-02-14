@@ -5,14 +5,14 @@ import { QRCodeSVG } from 'qrcode.react';
 
 interface HeaderProps {
   balance: string;
-  ethBalance: string;
+  solBalance: string;
   address: string;
   onLogout: () => void;
   onRefresh: () => void;
   isRefreshing: boolean;
 }
 
-export const WalletHeader: React.FC<HeaderProps> = ({ balance, ethBalance, address, onLogout, onRefresh, isRefreshing }) => {
+export const WalletHeader: React.FC<HeaderProps> = ({ balance, solBalance, address, onLogout, onRefresh, isRefreshing }) => {
   const [copied, setCopied] = React.useState(false);
 
   const copyAddress = () => {
@@ -35,11 +35,11 @@ export const WalletHeader: React.FC<HeaderProps> = ({ balance, ethBalance, addre
       {/* Network Status Badge */}
       <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-blue-800/50 px-3 py-1 rounded-full border border-blue-500/30">
           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
-          <span className="text-[10px] font-medium text-blue-100 uppercase tracking-widest">Base Mainnet</span>
+          <span className="text-[10px] font-medium text-blue-100 uppercase tracking-widest">Solana Mainnet</span>
       </div>
 
       {/* Refresh Button (Top Left) */}
-      <button 
+      <button
         onClick={onRefresh}
         disabled={isRefreshing}
         className={`absolute top-6 left-6 z-20 p-2 text-blue-200 hover:text-white bg-blue-700/30 hover:bg-blue-700/50 rounded-full transition-all ${isRefreshing ? 'animate-spin' : ''}`}
@@ -49,7 +49,7 @@ export const WalletHeader: React.FC<HeaderProps> = ({ balance, ethBalance, addre
       </button>
 
       {/* Logout Button (Top Right) */}
-      <button 
+      <button
         onClick={onLogout}
         className="absolute top-6 right-6 z-20 p-2 text-blue-200 hover:text-white bg-blue-700/30 hover:bg-blue-700/50 rounded-full transition-all"
         aria-label="Logout"
@@ -63,15 +63,15 @@ export const WalletHeader: React.FC<HeaderProps> = ({ balance, ethBalance, addre
           ${Number(balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </h1>
         <span className="text-blue-200 text-sm font-medium bg-blue-700/50 px-3 py-1 rounded-full mb-6">
-          USDC on Base
+          USDC on Solana
         </span>
 
         <div className="flex items-center gap-2 text-xs text-blue-200 bg-blue-800/30 px-3 py-1.5 rounded-lg mb-6 border border-blue-500/30">
           <Fuel className="w-3 h-3" />
-          <span>Gas Funds: {parseFloat(ethBalance).toFixed(4)} ETH</span>
+          <span>Gas Funds: {parseFloat(solBalance).toFixed(4)} SOL</span>
         </div>
 
-        <button 
+        <button
           onClick={copyAddress}
           className="flex items-center gap-2 bg-blue-700/40 hover:bg-blue-700/60 transition-colors py-2 px-4 rounded-full text-xs font-mono text-blue-100"
         >
@@ -95,13 +95,13 @@ export const LogoutModal: React.FC<{ isOpen: boolean; onConfirm: () => void; onC
           Are you sure you want to log out? Your secure wallet words will remain on this device unless you choose to replace them later.
         </p>
         <div className="flex gap-3">
-          <button 
+          <button
             onClick={onCancel}
             className="flex-1 py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors"
           >
             Cancel
           </button>
-          <button 
+          <button
             onClick={onConfirm}
             className="flex-1 py-3 px-4 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl transition-colors"
           >
@@ -123,9 +123,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({ transactions }
       <div className="bg-white rounded-2xl shadow-lg p-5 min-h-[300px]">
         <div className="flex justify-between items-center mb-4">
            <h3 className="text-gray-800 font-bold text-lg">Recent Activity</h3>
-           <span className="text-xs text-gray-400 font-normal">Last ~4 Hours</span>
+           <span className="text-xs text-gray-400 font-normal">Last 20 Transactions</span>
         </div>
-        
+
         {transactions.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-gray-400">
             <Clock className="w-8 h-8 mb-2 opacity-50" />
@@ -134,9 +134,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({ transactions }
         ) : (
           <div className="space-y-4">
             {transactions.map((tx) => (
-              <a 
-                key={tx.hash} 
-                href={`https://basescan.org/tx/${tx.hash}`}
+              <a
+                key={tx.hash}
+                href={`https://solscan.io/tx/${tx.hash}`}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center justify-between group hover:bg-gray-50 p-2 rounded-lg -mx-2 transition-colors"
@@ -186,14 +186,14 @@ export const ReceiveCard: React.FC<{ address: string }> = ({ address }) => {
   return (
     <div className="flex flex-col items-center justify-center h-full p-6 pt-12">
       <h2 className="text-2xl font-bold text-gray-900 mb-8">Receive USDC</h2>
-      
+
       <div className="bg-white p-6 rounded-3xl shadow-xl mb-8 border border-gray-100">
         <QRCodeSVG value={address} size={200} level="H" />
       </div>
 
       <div className="w-full max-w-sm">
-        <p className="text-gray-500 text-center text-sm mb-2">Your Base Address</p>
-        <button 
+        <p className="text-gray-500 text-center text-sm mb-2">Your Solana Address</p>
+        <button
           onClick={copy}
           className="w-full bg-gray-100 active:bg-gray-200 py-4 px-4 rounded-xl flex items-center justify-between group transition-colors"
         >
@@ -205,7 +205,7 @@ export const ReceiveCard: React.FC<{ address: string }> = ({ address }) => {
       </div>
 
       <p className="mt-8 text-xs text-center text-gray-400 max-w-xs">
-        Only send USDC on the Base network to this address. Sending other assets may result in permanent loss.
+        Only send USDC on the Solana network to this address. Sending other assets may result in permanent loss.
       </p>
     </div>
   );

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { ethers } from 'ethers';
+import { Keypair } from '@solana/web3.js';
+import * as bip39 from 'bip39';
 import { ViewState, WalletState, Transaction } from './types';
-import { getWalletFromMnemonic, getUSDCBalance, getETHBalance, sendUSDC, getRecentTransactions } from './services/walletService';
+import { getKeypairFromMnemonic, getUSDCBalance, getSOLBalance, sendUSDC, getRecentTransactions } from './services/walletService';
 import { LoginView, ImportWalletView, SetupWalletView } from './components/AuthViews';
 import { WalletHeader, TransactionList, ReceiveCard, LogoutModal } from './components/DashboardComponents';
 import { SendView, PayView, ChargeView, SettingsView } from './components/ActionViews';
@@ -9,12 +10,12 @@ import { ArrowUpRight, ArrowDownLeft, Scan, CreditCard, Settings, Loader2 } from
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>(ViewState.LOGIN);
-  const [wallet, setWallet] = useState<ethers.HDNodeWallet | null>(null);
+  const [wallet, setWallet] = useState<Keypair | null>(null);
   const [walletState, setWalletState] = useState<WalletState>({
     address: '',
     mnemonic: null,
     balance: '0.00',
-    ethBalance: '0.00',
+    solBalance: '0.00',
     transactions: [],
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -56,8 +57,8 @@ const App: React.FC = () => {
     const serverUrl = import.meta.env.VITE_QRAPPSERVER_URL || 'http://localhost:5010';
     console.log(`🔗 Backend API configured at: ${serverUrl}`);
 
-    const savedMnemonic = localStorage.getItem('base_wallet_mnemonic');
-    const isLoggedIn = localStorage.getItem('base_wallet_logged_in');
+    const savedMnemonic = localStorage.getItem('solana_wallet_mnemonic');
+    const isLoggedIn = localStorage.getItem('solana_wallet_logged_in');
 
     if (isLoggedIn === 'true' && savedMnemonic) {
       initializeWallet(savedMnemonic);
@@ -73,15 +74,15 @@ const App: React.FC = () => {
 
     const fetchData = async () => {
       // Fetch balances
-      const [usdcBal, ethBal] = await Promise.all([
+      const [usdcBal, solBal] = await Promise.all([
         getUSDCBalance(walletState.address),
-        getETHBalance(walletState.address)
+        getSOLBalance(walletState.address)
       ]);
 
       setWalletState(prev => ({
         ...prev,
         balance: usdcBal,
-        ethBalance: ethBal
+        solBalance: solBal
       }));
     };
 
@@ -104,38 +105,37 @@ const App: React.FC = () => {
   const initializeWallet = async (mnemonic: string) => {
     setIsLoading(true);
     try {
-      const newWallet = getWalletFromMnemonic(mnemonic);
-      const address = await newWallet.getAddress();
+      const keypair = getKeypairFromMnemonic(mnemonic);
+      const address = keypair.publicKey.toBase58();
 
       // Set wallet state immediately to allow dashboard access
-      setWallet(newWallet);
+      setWallet(keypair);
       setWalletState(prev => ({
         ...prev,
         address,
         mnemonic,
-        // Keep previous values if re-initializing or default to 0
         balance: prev.balance !== '0.00' ? prev.balance : '0.00',
-        ethBalance: prev.ethBalance !== '0.00' ? prev.ethBalance : '0.00'
+        solBalance: prev.solBalance !== '0.00' ? prev.solBalance : '0.00'
       }));
 
-      localStorage.setItem('base_wallet_mnemonic', mnemonic);
-      localStorage.setItem('base_wallet_logged_in', 'true');
+      localStorage.setItem('solana_wallet_mnemonic', mnemonic);
+      localStorage.setItem('solana_wallet_logged_in', 'true');
 
       // Move to dashboard immediately so user isn't stuck waiting
       setView(ViewState.DASHBOARD);
 
       // Fetch initial data in background
       try {
-        const [initialBalance, initialEthBalance, history] = await Promise.all([
+        const [initialBalance, initialSolBalance, history] = await Promise.all([
           getUSDCBalance(address),
-          getETHBalance(address),
+          getSOLBalance(address),
           getRecentTransactions(address)
         ]);
 
         setWalletState(prev => ({
           ...prev,
           balance: initialBalance,
-          ethBalance: initialEthBalance,
+          solBalance: initialSolBalance,
           transactions: history
         }));
       } catch (innerError) {
@@ -144,8 +144,8 @@ const App: React.FC = () => {
 
     } catch (e) {
       console.error("Failed to init wallet", e);
-      localStorage.removeItem('base_wallet_mnemonic');
-      localStorage.removeItem('base_wallet_logged_in');
+      localStorage.removeItem('solana_wallet_mnemonic');
+      localStorage.removeItem('solana_wallet_logged_in');
       setView(ViewState.LOGIN);
       alert("Login failed. Please try again.");
     } finally {
@@ -158,16 +158,16 @@ const App: React.FC = () => {
     setIsRefreshing(true);
     try {
       // Fetch everything
-      const [usdcBal, ethBal, history] = await Promise.all([
+      const [usdcBal, solBal, history] = await Promise.all([
         getUSDCBalance(walletState.address),
-        getETHBalance(walletState.address),
+        getSOLBalance(walletState.address),
         getRecentTransactions(walletState.address)
       ]);
 
       setWalletState(prev => ({
         ...prev,
         balance: usdcBal,
-        ethBalance: ethBal,
+        solBalance: solBal,
         transactions: history
       }));
     } catch (error) {
@@ -186,8 +186,7 @@ const App: React.FC = () => {
   // Create New Wallet Flow
   const handleCreateWallet = () => {
     try {
-      const randomWallet = ethers.Wallet.createRandom();
-      const newMnemonic = randomWallet.mnemonic?.phrase;
+      const newMnemonic = bip39.generateMnemonic();
 
       if (newMnemonic) {
         initializeWallet(newMnemonic);
@@ -240,7 +239,7 @@ const App: React.FC = () => {
   const confirmLogout = () => {
     setShowLogoutModal(false);
     // Remove logged_in flag but keep mnemonic for "Continue" functionality
-    localStorage.removeItem('base_wallet_logged_in');
+    localStorage.removeItem('solana_wallet_logged_in');
     setWallet(null);
     setView(ViewState.LOGIN);
   };
@@ -259,7 +258,7 @@ const App: React.FC = () => {
         <div className="flex flex-col items-center justify-center flex-1">
           <Loader2 className="w-16 h-16 text-blue-600 animate-spin mb-6" />
           <h2 className="text-xl font-bold text-gray-900">Accessing Secure Vault</h2>
-          <p className="text-gray-500 text-sm mt-2">Syncing with Base Blockchain...</p>
+          <p className="text-gray-500 text-sm mt-2">Syncing with Solana Blockchain...</p>
         </div>
       </div>
     );
@@ -275,7 +274,7 @@ const App: React.FC = () => {
   );
 
   if (view === ViewState.SETUP) {
-    const savedMnemonic = localStorage.getItem('base_wallet_mnemonic');
+    const savedMnemonic = localStorage.getItem('solana_wallet_mnemonic');
     return (
       <div className={containerClasses}>
         <SetupWalletView
@@ -331,7 +330,7 @@ const App: React.FC = () => {
           <>
             <WalletHeader
               balance={walletState.balance}
-              ethBalance={walletState.ethBalance}
+              solBalance={walletState.solBalance}
               address={walletState.address}
               onLogout={() => setShowLogoutModal(true)}
               onRefresh={handleRefresh}
