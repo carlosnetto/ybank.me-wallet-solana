@@ -145,3 +145,13 @@ App loaded successfully. Login screen rendered. The plugin provides a proper bro
 ## Lesson learned
 
 When using Solana libraries (or any library that depends on Node.js built-ins) in a Vite project, use `vite-plugin-node-polyfills` from the start. Manual aliasing is fragile because it's easy to miss modules (like `crypto`) that are used deep in the dependency tree, and Vite's externalization produces silent runtime failures rather than build errors.
+
+---
+
+## Permanent fix (Feb 2026)
+
+Replaced `ed25519-hd-key` with `micro-key-producer` — a pure JavaScript SLIP-0010 implementation that does not depend on Node.js `crypto` at all. This eliminated the root cause entirely and allowed removing `crypto` from the Vite polyfill list. The `vite-plugin-node-polyfills` config now only includes `buffer`, `stream`, `events`, `process` (needed by `@solana/web3.js` transitive dependencies).
+
+Bundle size dropped from 1,556 KB to 996 KB (36% reduction) by removing `crypto-browserify` and its dependency tree.
+
+`micro-key-producer` is also the library recommended by the official Solana docs (solana.com/developers/cookbook/wallets/restore-from-mnemonic). The older `micro-ed25519-hdkey` package was deprecated in favor of `micro-key-producer`.
