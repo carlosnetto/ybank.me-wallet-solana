@@ -10,6 +10,8 @@ import {
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
   getAccount,
+  TokenAccountNotFoundError,
+  TokenInvalidAccountOwnerError,
 } from '@solana/spl-token';
 import * as bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
@@ -63,9 +65,12 @@ export const getUSDCBalance = async (address: string): Promise<string> => {
       // Convert from atomic units (6 decimals) to human-readable
       const balance = Number(accountInfo.amount) / Math.pow(10, USDC_DECIMALS);
       return balance.toFixed(2);
-    } catch {
-      // Token account doesn't exist yet — balance is 0
-      return "0.00";
+    } catch (error) {
+      if (error instanceof TokenAccountNotFoundError || error instanceof TokenInvalidAccountOwnerError) {
+        // Token account doesn't exist yet — balance is 0
+        return "0.00";
+      }
+      throw error;
     }
   } catch (error) {
     console.warn("Error fetching USDC balance:", error);

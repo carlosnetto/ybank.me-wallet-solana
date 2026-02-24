@@ -30,4 +30,4 @@ export interface WalletState {
 }
 
 export const USDC_MINT_SOLANA = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-export const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
+export const SOLANA_RPC_URL = 'https://solana-rpc.publicnode.com';
