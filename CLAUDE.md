@@ -85,12 +85,25 @@ For production, consider a dedicated RPC provider (Helius, QuickNode, etc.) for 
 - `sendUSDC` provides specific error messages: insufficient SOL, insufficient USDC, transaction expired
 - Balance/history polling in `App.tsx` catches errors per-poll to avoid breaking the interval
 
+## Mobile Viewport
+
+The app uses `100dvh` (not `100vh`) for full-height layout and `env(safe-area-inset-bottom)` for the bottom nav bar. This is required for iOS Safari where `100vh` includes the area behind the browser toolbar, hiding bottom-positioned elements.
+
+Key details:
+- `index.html` has `viewport-fit=cover` in the viewport meta tag — this enables `env(safe-area-inset-bottom)`
+- `App.tsx` container uses `h-[100dvh]` — dynamic viewport height that excludes browser chrome
+- Nav bar uses `bottom-[calc(0.5rem+env(safe-area-inset-bottom))]` — clears the iPhone home indicator
+- Content area uses `pb-28` to avoid clipping behind the nav bar
+
+**Do NOT change these back to `h-screen` / `100vh` / `bottom-6`.** It will break on iPhone (see HISTORY.md).
+
 ## Lessons Learned
 
 1. **Solana public RPC blocks browser requests** — `api.mainnet-beta.solana.com` returns 403 when `Origin` header is present. Use CORS-friendly RPCs.
 2. **`ed25519-hd-key` requires Node.js crypto** — Causes silent blank page in Vite (see HISTORY.md). Replaced with `micro-key-producer` (pure JS).
 3. **Silent error catching hides real failures** — Never catch all errors as "balance is 0". Distinguish between "account not found" (expected) and network errors (unexpected).
 4. **Simulate before sending** — Catches insufficient balance/fees before the user waits for a failed transaction.
+5. **Never use `100vh` for mobile layouts** — iOS Safari's `100vh` includes the area behind the browser toolbar. Use `100dvh` instead, and use `env(safe-area-inset-bottom)` for bottom-positioned elements. See HISTORY.md for the full story.
 
 ## Ecosystem Direction (As of Feb 2026)
 
