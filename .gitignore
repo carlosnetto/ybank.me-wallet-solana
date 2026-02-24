@@ -25,7 +25,11 @@ Thumbs.db
 *.sln
 *.sw?
 
-# 5. Logs
+# 5. Cloudflare
+.wrangler/
+x9-150-py-tunnel.zip
+
+# 6. Logs
 logs
 *.log
 npm-debug.log*
