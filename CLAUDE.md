@@ -1,115 +1,123 @@
-# CLAUDE.md — Solana Wallet Port
+# CLAUDE.md — Solana Wallet
 
 ## Project Context
 
-This is a fork of `ybank.me-wallet`, a React/TypeScript mobile payment wallet originally built for **Base (EVM)**. The goal is to port it to **Solana** while keeping the same UI/UX flow.
+This is a fork of `ybank.me-wallet`, a React/TypeScript mobile payment wallet originally built for **Base (EVM)**, now fully ported to **Solana**.
 
 The original Base version lives at `/Users/cnetto/Git/ybank.me-wallet` and should not be modified.
 
 ## Current State
 
-The codebase is an **unmodified copy** of the Base wallet. No Solana changes have been made yet. Everything still references ethers.js, Base RPC, and EVM concepts.
+The port to Solana is **complete and functional**. The app handles wallet creation/import, USDC balance display, sending USDC, receiving (QR), merchant payment flows, and transaction history — all on Solana mainnet.
 
 ## Architecture Overview
 
 ```
 index.tsx                     # React DOM entry point
 App.tsx                       # Main app state, routing, wallet lifecycle
-types.ts                      # TypeScript types, config constants
+types.ts                      # TypeScript types, Solana constants
 components/
   AuthViews.tsx               # Login, Setup, Import/Create wallet screens
   ActionViews.tsx             # Send, Pay (QR scan), Charge (QR generate), Settings
   DashboardComponents.tsx     # Header, balance display, transaction list, receive
 services/
-  walletService.ts            # ALL blockchain interactions (this is the main file to rewrite)
+  walletService.ts            # All Solana blockchain interactions
 ```
 
-## What Needs to Change
+## Dependencies (Solana Stack)
 
-### 1. Dependencies (`package.json`)
+| Package | Purpose |
+|---|---|
+| `@solana/web3.js` (v1.x) | RPC connection, keypairs, transactions |
+| `@solana/spl-token` (v0.4.x) | USDC (SPL token) operations, ATA management |
+| `bip39` | BIP39 mnemonic generation and validation |
+| `micro-key-producer` | SLIP-0010 Ed25519 HD key derivation (pure JS, no Node.js crypto) |
+| `vite-plugin-node-polyfills` | Buffer/stream/events polyfills for browser |
 
-**Remove:**
-- `ethers` (v6.16.0)
+### Why These Choices
 
-**Add:**
-- `@solana/web3.js` — Solana RPC, transactions, keypairs
-- `@solana/spl-token` — SPL token operations (USDC is an SPL token on Solana)
-- `bip39` — mnemonic generation/validation (ethers.js currently handles this internally)
-- `ed25519-hd-key` or `@solana/wallet-standard` — HD key derivation from mnemonic (Solana uses derivation path m/44'/501'/0'/0')
+- **`micro-key-producer`** over `ed25519-hd-key`: Pure JS implementation, no dependency on Node.js `crypto` module. Eliminates the blank-page bug caused by Vite externalizing `crypto.createHmac()` (see HISTORY.md). Also the officially recommended library in Solana docs.
+- **`@solana/web3.js` v1.x** over `@solana/kit`: The ecosystem is moving to `@solana/kit` (labeled "recommended" in Solana docs, with v1.x labeled "legacy"), but v1.x is stable, well-documented, and sufficient for this wallet. Migration to Kit is a future consideration.
+- **`vite-plugin-node-polyfills`**: Only polyfills `buffer`, `stream`, `events`, `process` — `crypto` polyfill was removed after switching to `micro-key-producer`.
 
-### 2. `services/walletService.ts` — Full Rewrite
-
-This file contains ALL blockchain logic. Every function must be reimplemented:
-
-| Current Function | What It Does | Solana Equivalent |
-|---|---|---|
-| `getProvider()` | Creates `ethers.JsonRpcProvider` for Base RPC | `new Connection(clusterApiUrl('mainnet-beta'))` or custom RPC |
-| `getWalletFromMnemonic(phrase)` | `ethers.Wallet.fromPhrase()` → EVM keypair | Derive Solana `Keypair` from mnemonic using BIP44 path `m/44'/501'/0'/0'` |
-| `validateMnemonic(phrase)` | `ethers.Mnemonic.isValidMnemonic()` | Use `bip39.validateMnemonic()` |
-| `getETHBalance(address)` | `provider.getBalance()` → ETH balance | `connection.getBalance()` → SOL balance (in lamports, divide by 10^9) |
-| `getUSDCBalance(address)` | ERC-20 `balanceOf()` call | Find associated token account for USDC mint, get token balance via `getTokenAccountBalance()` |
-| `sendUSDC(wallet, to, amount)` | ERC-20 `transfer()` call | SPL token transfer instruction. Must handle associated token accounts (recipient may not have one yet — create if needed) |
-| `getRecentTransactions(address)` | ERC-20 Transfer event log filtering in 2500-block chunks | `getSignaturesForAddress()` + `getParsedTransaction()` — completely different API |
-
-**Key Solana differences to handle:**
-- Solana uses `Keypair` (Ed25519), not ECDSA like EVM
-- USDC on Solana is an SPL token with mint address `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` (mainnet)
-- SPL tokens require "associated token accounts" — the recipient must have one or you create it in the same transaction
-- Transaction model is instruction-based, not contract-call-based
-- Gas fees are paid in SOL (like ETH on Base, but much cheaper)
-
-### 3. `App.tsx` — Moderate Changes
-
-- **Line ~187-202**: Wallet creation — replace `ethers.Wallet.createRandom()` with `bip39.generateMnemonic()` + Solana keypair derivation
-- **Line ~149**: Mnemonic validation — replace `ethers.Mnemonic.isValidMnemonic()`
-- **Line ~12-19**: Wallet state types — change `ethers.HDNodeWallet` to Solana `Keypair`
-- **Line ~90**: Balance polling — update function calls to Solana equivalents
-- **Line ~213-230**: Send flow — update to use Solana send function
-- **localStorage key**: Consider renaming from `'base_wallet_mnemonic'` to `'solana_wallet_mnemonic'` (note: same mnemonic phrase format, but derives different addresses)
-
-### 4. `components/ActionViews.tsx` — Targeted Changes
-
-- **Address validation** (~line 86 in SendView): Replace `0x` hex format check with Base58 Solana address validation
-- **Explorer links**: Replace `basescan.org/tx/` with `solscan.io/tx/` or `explorer.solana.com/tx/`
-- **PayView** (~line 282): Payment data extraction looks for `baseMethod?.networks?.Base?.address` — change to look for Solana network/address in the QR payment data
-- **Amount conversion**: Replace `ethers.parseUnits` / `ethers.formatUnits` with manual math (USDC is still 6 decimals on Solana)
-- **Notification payloads**: Update `network: 'Base'` references to `'Solana'`
-
-### 5. `components/DashboardComponents.tsx` — Minor Changes
-
-- **Network badge** (~line 38): Change "Base Mainnet" to "Solana Mainnet"
-- **Explorer links** (~line 139): `basescan.org` → `solscan.io`
-- **Gas label** (~line 71): "ETH" → "SOL"
-
-### 6. `types.ts` — Minor Changes
-
-- Rename/replace `USDC_ADDRESS_BASE` with Solana USDC mint: `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`
-- Update type definitions that reference `ethers` types
-- Update RPC URL constant to a Solana RPC endpoint
-
-## Key Constants for Solana
+## Key Constants
 
 ```
 USDC Mint Address (mainnet): EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-USDC Decimals: 6 (same as Base)
-SOL Decimals: 9 (vs ETH's 18)
+USDC Decimals: 6
+SOL Decimals: 9
 Derivation Path: m/44'/501'/0'/0'
-RPC Options: https://api.mainnet-beta.solana.com (rate-limited) or a paid provider
+RPC Endpoint: https://solana-rpc.publicnode.com
+Token Program: TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
 ```
 
-## Recommended Order of Work
+## RPC Endpoint
 
-1. Swap dependencies in `package.json` and `npm install`
-2. Rewrite `services/walletService.ts` entirely for Solana
-3. Update `App.tsx` wallet creation/restoration logic
-4. Update `types.ts` constants and types
-5. Update `components/ActionViews.tsx` (address validation, explorer links, payment flow)
-6. Update `components/DashboardComponents.tsx` (labels, links)
-7. Test wallet creation, balance fetching, sending USDC, and transaction history
+**Do NOT use `api.mainnet-beta.solana.com` from browser code.** It returns 403 for all requests with an `Origin` header (which browsers always send). The app uses `solana-rpc.publicnode.com` which allows CORS.
+
+For production, consider a dedicated RPC provider (Helius, QuickNode, etc.) for better reliability and enhanced APIs.
+
+## walletService.ts — Function Reference
+
+| Function | What It Does |
+|---|---|
+| `getConnection()` | Singleton `Connection` to Solana RPC |
+| `getKeypairFromMnemonic(phrase)` | BIP39 seed → SLIP-0010 derivation → Ed25519 `Keypair` |
+| `validateMnemonic(phrase)` | BIP39 mnemonic validation |
+| `getSOLBalance(address)` | Lamports → SOL (10^9) |
+| `getUSDCBalance(address)` | ATA lookup → SPL token balance, with `getTokenAccountsByOwner` fallback |
+| `sendUSDC(keypair, to, amount)` | Simulate → sign → send → confirm (handles ATA creation for recipient) |
+| `getRecentTransactions(address)` | `getSignaturesForAddress` on ATA → `getParsedTransaction` → parse `transferChecked` instructions |
+
+### Send Flow Details
+
+`sendUSDC` follows this sequence:
+1. Build transaction (create recipient ATA if needed + transfer instruction)
+2. Get latest blockhash
+3. **Simulate** transaction to catch errors before signing (insufficient SOL/USDC, invalid accounts)
+4. Sign with keypair
+5. Send raw transaction
+6. Confirm with blockhash expiry tracking (retries if blockhash expires)
+
+### Error Handling
+
+- `getUSDCBalance` only catches `TokenAccountNotFoundError` / `TokenInvalidAccountOwnerError` as "0 balance" — other errors (network, 403, rate limiting) propagate with logging
+- `sendUSDC` provides specific error messages: insufficient SOL, insufficient USDC, transaction expired
+- Balance/history polling in `App.tsx` catches errors per-poll to avoid breaking the interval
+
+## Lessons Learned
+
+1. **Solana public RPC blocks browser requests** — `api.mainnet-beta.solana.com` returns 403 when `Origin` header is present. Use CORS-friendly RPCs.
+2. **`ed25519-hd-key` requires Node.js crypto** — Causes silent blank page in Vite (see HISTORY.md). Replaced with `micro-key-producer` (pure JS).
+3. **Silent error catching hides real failures** — Never catch all errors as "balance is 0". Distinguish between "account not found" (expected) and network errors (unexpected).
+4. **Simulate before sending** — Catches insufficient balance/fees before the user waits for a failed transaction.
+
+## Ecosystem Direction (As of Feb 2026)
+
+The Solana Foundation recommends these for new projects:
+
+| Current (Legacy) | Recommended (New) |
+|---|---|
+| `@solana/web3.js` | `@solana/kit` (v5.x) |
+| `@solana/spl-token` | `@solana-program/token` |
+| `ed25519-hd-key` | `micro-key-producer` (already adopted) |
+| Manual React polling | `@solana/react-hooks` (for dApps with wallet adapters) |
+
+Resources:
+- [Solana Dev Skill](https://github.com/solana-foundation/solana-dev-skill) — Claude Code skill with opinionated Solana best practices
+- [Solana Kit docs](https://www.solanakit.com/) — New SDK documentation
+- Solana.com pages return markdown with `Accept: text/markdown` header
+
+### Future Considerations
+
+- **Helius RPC** — Enhanced APIs (`getTransactionsForAddress`) would simplify transaction history
+- **Kora** — Gasless transactions (users pay fees in USDC instead of needing SOL)
+- **Commerce Kit** (`@solana/commerce-kit`) — Drop-in payment verification for QR/Pay flows
+- **Migration to `@solana/kit`** — Use `solana-kit-migration-skill` when ready
 
 ## Backend / QR Server
 
-The app communicates with a QR payment server (`VITE_QRAPPSERVER_URL`, default `http://localhost:5010`). The endpoints `/fetch`, `/generate`, and `/notify` may need updates on the server side to support Solana addresses and transaction formats. This is **out of scope** for this repo but should be coordinated.
+The app communicates with a QR payment server (`VITE_QRAPPSERVER_URL`, default `http://localhost:5010`). The endpoints `/fetch`, `/generate`, and `/notify` may need updates on the server side to support Solana addresses and transaction formats. This is **out of scope** for this repo.
 
 ## What NOT to Change
 

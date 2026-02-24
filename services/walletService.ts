@@ -3,7 +3,6 @@ import {
   Keypair,
   PublicKey,
   Transaction as SolanaTransaction,
-  sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,
@@ -14,7 +13,7 @@ import {
   TokenInvalidAccountOwnerError,
 } from '@solana/spl-token';
 import * as bip39 from 'bip39';
-import { derivePath } from 'ed25519-hd-key';
+import { HDKey } from 'micro-key-producer/slip10.js';
 import { SOLANA_RPC_URL, USDC_MINT_SOLANA, Transaction } from '../types';
 
 const USDC_MINT = new PublicKey(USDC_MINT_SOLANA);
@@ -37,8 +36,9 @@ export const validateMnemonic = (phrase: string): boolean => {
 
 export const getKeypairFromMnemonic = (phrase: string): Keypair => {
   const seed = bip39.mnemonicToSeedSync(phrase);
-  const derivedSeed = derivePath(DERIVATION_PATH, seed.toString('hex')).key;
-  return Keypair.fromSeed(derivedSeed);
+  const hd = HDKey.fromMasterSeed(seed);
+  const child = hd.derive(DERIVATION_PATH);
+  return Keypair.fromSeed(child.privateKey);
 };
 
 export const getSOLBalance = async (address: string): Promise<string> => {
@@ -70,7 +70,21 @@ export const getUSDCBalance = async (address: string): Promise<string> => {
         // Token account doesn't exist yet — balance is 0
         return "0.00";
       }
-      throw error;
+      // ATA lookup failed — try getTokenAccountsByOwner as fallback
+      console.warn("ATA getAccount failed, trying getTokenAccountsByOwner:", error);
+      const tokenAccounts = await connection.getTokenAccountsByOwner(
+        ownerPubkey,
+        { mint: USDC_MINT },
+        { commitment: 'confirmed' }
+      );
+      if (tokenAccounts.value.length === 0) return "0.00";
+      // Parse the first matching account
+      const data = tokenAccounts.value[0].account.data;
+      const parsed = data as any;
+      if (parsed.parsed?.info?.tokenAmount?.uiAmountString) {
+        return parseFloat(parsed.parsed.info.tokenAmount.uiAmountString).toFixed(2);
+      }
+      return "0.00";
     }
   } catch (error) {
     console.warn("Error fetching USDC balance:", error);
@@ -122,7 +136,36 @@ export const sendUSDC = async (
       )
     );
 
-    const signature = await sendAndConfirmTransaction(connection, transaction, [keypair]);
+    // Set recent blockhash and fee payer before simulation
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = senderPubkey;
+
+    // Simulate transaction before sending to catch errors early
+    const simulation = await connection.simulateTransaction(transaction, [keypair]);
+    if (simulation.value.err) {
+      const errStr = JSON.stringify(simulation.value.err);
+      console.error("Transaction simulation failed:", errStr, simulation.value.logs);
+
+      if (errStr.includes('InsufficientFunds') || simulation.value.logs?.some(l => l.includes('insufficient'))) {
+        throw new Error("Insufficient USDC balance.");
+      }
+      if (errStr.includes('0x1') || simulation.value.logs?.some(l => l.includes('insufficient lamports'))) {
+        throw new Error("Insufficient SOL for transaction fees. Please deposit SOL.");
+      }
+      throw new Error("Transaction simulation failed. Please try again.");
+    }
+
+    // Sign and send with the same blockhash used for simulation
+    transaction.sign(keypair);
+    const signature = await connection.sendRawTransaction(transaction.serialize());
+
+    // Wait for confirmation with blockhash expiry awareness
+    await connection.confirmTransaction(
+      { signature, blockhash, lastValidBlockHeight },
+      'confirmed'
+    );
+
     return signature;
   } catch (error: any) {
     console.error("Send Transaction Error:", error);
@@ -131,8 +174,12 @@ export const sendUSDC = async (
       throw new Error("Insufficient SOL for transaction fees. Please deposit SOL.");
     }
 
-    if (error.message?.includes('insufficient funds')) {
+    if (error.message?.includes('insufficient funds') || error.message?.includes('Insufficient USDC')) {
       throw new Error("Insufficient USDC balance.");
+    }
+
+    if (error.message?.includes('Blockhash not found') || error.message?.includes('block height exceeded')) {
+      throw new Error("Transaction expired. Please try again.");
     }
 
     throw new Error(error.message || "Transaction failed. Please check your connection and balance.");

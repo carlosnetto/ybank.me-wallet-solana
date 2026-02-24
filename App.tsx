@@ -72,32 +72,42 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!wallet || !walletState.address) return;
 
-    const fetchData = async () => {
-      // Fetch balances
-      const [usdcBal, solBal] = await Promise.all([
-        getUSDCBalance(walletState.address),
-        getSOLBalance(walletState.address)
-      ]);
+    const fetchBalances = async () => {
+      try {
+        const [usdcBal, solBal] = await Promise.all([
+          getUSDCBalance(walletState.address),
+          getSOLBalance(walletState.address)
+        ]);
 
-      setWalletState(prev => ({
-        ...prev,
-        balance: usdcBal,
-        solBalance: solBal
-      }));
+        setWalletState(prev => ({
+          ...prev,
+          balance: usdcBal,
+          solBalance: solBal
+        }));
+      } catch (error) {
+        console.warn("Balance poll failed, will retry:", error);
+      }
     };
 
-    fetchData();
-    // Refresh balances every 10s
-    const interval = setInterval(fetchData, 10000);
+    const fetchHistory = async () => {
+      try {
+        const history = await getRecentTransactions(walletState.address);
+        setWalletState(prev => ({ ...prev, transactions: history }));
+      } catch (error) {
+        console.warn("History poll failed, will retry:", error);
+      }
+    };
 
-    // Fetch history separately to avoid blocking, refresh every 30s
-    const historyInterval = setInterval(async () => {
-      const history = await getRecentTransactions(walletState.address);
-      setWalletState(prev => ({ ...prev, transactions: history }));
-    }, 30000);
+    // Fetch both immediately
+    fetchBalances();
+    fetchHistory();
+
+    // Then poll on intervals
+    const balanceInterval = setInterval(fetchBalances, 10000);
+    const historyInterval = setInterval(fetchHistory, 30000);
 
     return () => {
-      clearInterval(interval);
+      clearInterval(balanceInterval);
       clearInterval(historyInterval);
     };
   }, [wallet, walletState.address]);
@@ -208,15 +218,16 @@ const App: React.FC = () => {
   const handleSend = async (to: string, amount: string) => {
     if (!wallet) return;
     try {
+      // sendUSDC simulates, sends, and waits for 'confirmed' before returning
       const txHash = await sendUSDC(wallet, to, amount);
 
-      // Add to local history optimistically
+      // Transaction is confirmed — add to local history
       const newTx: Transaction = {
         hash: txHash,
         type: 'out',
         amount,
         timestamp: Date.now(),
-        status: 'pending',
+        status: 'confirmed',
         to
       };
 
@@ -225,7 +236,7 @@ const App: React.FC = () => {
         transactions: [newTx, ...prev.transactions]
       }));
 
-      // Optimistically update balance
+      // Update balance optimistically (next poll will reconcile with chain)
       const newBal = (parseFloat(walletState.balance) - parseFloat(amount)).toFixed(2);
       setWalletState(prev => ({ ...prev, balance: newBal }));
 
