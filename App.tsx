@@ -54,7 +54,7 @@ const App: React.FC = () => {
   useEffect(() => {
     console.log("🚀 App initializing...");
 
-    const serverUrl = import.meta.env.VITE_QRAPPSERVER_URL || 'http://localhost:5010';
+    const serverUrl = import.meta.env.VITE_QRAPPSERVER_URL || '';
     console.log(`🔗 Backend API configured at: ${serverUrl}`);
 
     const savedMnemonic = localStorage.getItem('solana_wallet_mnemonic');

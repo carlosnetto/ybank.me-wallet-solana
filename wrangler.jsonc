@@ -1,0 +1,13 @@
+{
+  "name": "x9-150",
+  "account_id": "8a5cfa2ea39c6e7e6e049f5a3ce13aa3",
+  "compatibility_date": "2026-02-23",
+  "main": "./worker.ts",
+  "assets": {
+    "directory": "./dist"
+  },
+  "workers_dev": true,
+  "vars": {
+    "API_TUNNEL_URL": "https://x9-api.materalab.us"
+  }
+}

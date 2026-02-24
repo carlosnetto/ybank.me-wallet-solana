@@ -24,7 +24,7 @@ const DEFAULT_SETTINGS = {
   qrExpiry: '15'
 };
 
-const QRAPPSERVER_URL = import.meta.env.VITE_QRAPPSERVER_URL || 'http://localhost:5010';
+const QRAPPSERVER_URL = import.meta.env.VITE_QRAPPSERVER_URL || '';
 
 // --- SEND VIEW ---
 interface SendProps {
