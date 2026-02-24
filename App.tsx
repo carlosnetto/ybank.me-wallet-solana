@@ -260,7 +260,7 @@ const App: React.FC = () => {
     localStorage.setItem('ybank_merchant_settings', JSON.stringify(newSettings));
   };
 
-  const containerClasses = "flex flex-col h-screen max-w-[393px] mx-auto bg-gray-50 shadow-2xl relative overflow-hidden";
+  const containerClasses = "flex flex-col h-[100dvh] max-w-[393px] mx-auto bg-gray-50 shadow-2xl relative overflow-hidden";
 
   // Global Loading State
   if (isLoading) {
@@ -336,7 +336,7 @@ const App: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
+      <div className="flex-1 overflow-y-auto no-scrollbar pb-28">
         {view === ViewState.DASHBOARD && (
           <>
             <WalletHeader
@@ -390,7 +390,7 @@ const App: React.FC = () => {
 
       {/* Navigation Toolbar */}
       {view === ViewState.DASHBOARD && (
-        <div className="absolute bottom-6 left-4 right-4 bg-white rounded-2xl shadow-xl border border-gray-100 p-1 flex justify-around items-center z-30">
+        <div className="absolute bottom-[calc(0.5rem+env(safe-area-inset-bottom))] left-4 right-4 bg-white rounded-2xl shadow-xl border border-gray-100 p-1 flex justify-around items-center z-30">
 
           <NavButton
             icon={<ArrowUpRight className="w-6 h-6" />}

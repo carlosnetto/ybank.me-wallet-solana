@@ -155,3 +155,36 @@ Replaced `ed25519-hd-key` with `micro-key-producer` — a pure JavaScript SLIP-0
 Bundle size dropped from 1,556 KB to 996 KB (36% reduction) by removing `crypto-browserify` and its dependency tree.
 
 `micro-key-producer` is also the library recommended by the official Solana docs (solana.com/developers/cookbook/wallets/restore-from-mnemonic). The older `micro-ed25519-hdkey` package was deprecated in favor of `micro-key-producer`.
+
+---
+
+## Navigation bar hidden on iPhone 16 (Feb 2026)
+
+On iPhone 16 (Safari), the bottom navigation bar (Send, Receive, Pay, Charge, Settings) was completely hidden behind the browser's bottom toolbar. Only the top of the blue Pay button was barely visible. Users could not access any wallet actions without knowing to swipe up.
+
+### Root Cause
+
+The app container used `h-screen` (`100vh`). On iOS Safari, `100vh` is the **total** viewport height including the area behind the browser's bottom toolbar (back/forward/tabs bar). The navigation bar was positioned at `absolute bottom-6` inside this container, which placed it behind the browser chrome — invisible and untouchable.
+
+This is a well-known iOS Safari bug. Apple intentionally made `100vh` equal to the largest possible viewport (toolbar hidden) so that pages don't reflow when the toolbar appears/disappears during scrolling. The side effect is that fixed/absolute-positioned bottom elements get clipped.
+
+### Fix
+
+Three changes:
+
+1. **`index.html`** — Added `viewport-fit=cover` to the viewport meta tag to enable `env(safe-area-inset-bottom)`:
+   ```html
+   <meta name="viewport" content="..., viewport-fit=cover" />
+   ```
+
+2. **`App.tsx`** — Container height changed from `h-screen` to `h-[100dvh]`. The `dvh` unit (dynamic viewport height) represents the actual visible area, excluding browser chrome. It shrinks when the Safari toolbar is visible and grows when it's hidden:
+   ```
+   h-screen  → 100vh  → includes area behind browser toolbar (broken)
+   h-[100dvh] → 100dvh → actual visible viewport (correct)
+   ```
+
+3. **`App.tsx`** — Navigation bar position changed from `bottom-6` to `bottom-[calc(0.5rem+env(safe-area-inset-bottom))]` to additionally clear the iPhone's home indicator. Content area padding increased from `pb-24` to `pb-28` to match.
+
+### Lesson learned
+
+Never use `100vh` for full-height mobile layouts. Use `100dvh` instead. The `dvh` unit is supported in all modern browsers (Safari 15.4+, Chrome 108+, Firefox 101+). For the bottom nav specifically, always account for `env(safe-area-inset-bottom)` on notched/Dynamic Island iPhones — it covers both the home indicator and any browser chrome overlap.
