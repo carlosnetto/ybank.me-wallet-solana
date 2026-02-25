@@ -1,13 +1,18 @@
 {
-  "name": "x9-150",
-  "account_id": "8a5cfa2ea39c6e7e6e049f5a3ce13aa3",
+  "name": "x9-150-wallet",
+  "account_id": "45281eba1857e04d45fe46d31bdc2f0b",
   "compatibility_date": "2026-02-23",
   "main": "./worker.ts",
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    "binding": "ASSETS"
   },
-  "workers_dev": true,
+  "routes": [
+    { "pattern": "materalabs.us/x9.150/*", "zone_name": "materalabs.us" },
+    { "pattern": "materalabs.us/x9.150", "zone_name": "materalabs.us" }
+  ],
   "vars": {
-    "API_TUNNEL_URL": "https://x9-api.materalab.us"
+    "API_TUNNEL_URL": "https://x9-api.materalabs.us",
+    "BASE_PATH": "/x9.150"
   }
 }

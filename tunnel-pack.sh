@@ -4,29 +4,26 @@
 
 set -e
 
-TUNNEL_ID="a04396d8-5ca2-40f8-9a67-d8206fbb74fe"
+TUNNEL_ID="2b0989c9-0117-4240-93ae-c4d2232bfcf1"
+TUNNEL_NAME="x9-api-materalabs"
 CREDS_FILE="$HOME/.cloudflared/${TUNNEL_ID}.json"
-CONFIG_FILE="/Users/cnetto/Git/x9.150-py/cloudflared-config.yml"
-OUTPUT="x9-150-py-tunnel.zip"
+OUTPUT="x9-api-materalabs-tunnel.zip"
 
-echo "=== Packing tunnel files for x9-150-py ==="
+echo "=== Packing tunnel files for $TUNNEL_NAME ==="
 
-# Verify files exist
-for f in "$CREDS_FILE" "$CONFIG_FILE"; do
-  if [ ! -f "$f" ]; then
-    echo "ERROR: $f not found"
-    exit 1
-  fi
-done
+# Verify credentials file exists
+if [ ! -f "$CREDS_FILE" ]; then
+  echo "ERROR: $CREDS_FILE not found"
+  exit 1
+fi
 
 # Create a temp directory with the files
 TMPDIR=$(mktemp -d)
 cp "$CREDS_FILE" "$TMPDIR/"
-cp "$CONFIG_FILE" "$TMPDIR/"
 
 # Create zip
 cd "$TMPDIR"
-zip "$OLDPWD/$OUTPUT" "${TUNNEL_ID}.json" "cloudflared-config.yml"
+zip "$OLDPWD/$OUTPUT" "${TUNNEL_ID}.json"
 cd "$OLDPWD"
 rm -rf "$TMPDIR"
 

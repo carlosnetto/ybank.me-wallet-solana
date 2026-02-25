@@ -1,16 +1,16 @@
 #!/bin/bash
 # tunnel-unpack.sh — Unpack and install tunnel files on the DESTINATION machine
-# Run this on the TARGET computer alongside x9-150-py-tunnel.zip
+# Run this on the TARGET computer alongside x9-api-materalabs-tunnel.zip
 
 set -e
 
-TUNNEL_ID="a04396d8-5ca2-40f8-9a67-d8206fbb74fe"
-ZIP_FILE="x9-150-py-tunnel.zip"
+TUNNEL_ID="2b0989c9-0117-4240-93ae-c4d2232bfcf1"
+TUNNEL_NAME="x9-api-materalabs"
+ZIP_FILE="x9-api-materalabs-tunnel.zip"
 CLOUDFLARED_DIR="$HOME/.cloudflared"
 CREDS_DEST="$CLOUDFLARED_DIR/${TUNNEL_ID}.json"
-CONFIG_DEST="$CLOUDFLARED_DIR/x9-150-py-config.yml"
 
-echo "=== Unpacking tunnel files for x9-150-py ==="
+echo "=== Unpacking tunnel files for $TUNNEL_NAME ==="
 
 # Check zip exists
 if [ ! -f "$ZIP_FILE" ]; then
@@ -49,26 +49,6 @@ else
   echo "Credentials file installed: $CREDS_DEST"
 fi
 
-# --- Install config file ---
-# Update credentials-file path to match this machine
-sed "s|credentials-file:.*|credentials-file: $CREDS_DEST|" "$TMPDIR/cloudflared-config.yml" > "$TMPDIR/cloudflared-config-fixed.yml"
-
-if [ -f "$CONFIG_DEST" ]; then
-  echo ""
-  echo "WARNING: Config file already exists:"
-  echo "  $CONFIG_DEST"
-  read -p "Overwrite? (y/N): " answer
-  if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
-    echo "Skipping config file."
-  else
-    cp "$TMPDIR/cloudflared-config-fixed.yml" "$CONFIG_DEST"
-    echo "Config file installed."
-  fi
-else
-  cp "$TMPDIR/cloudflared-config-fixed.yml" "$CONFIG_DEST"
-  echo "Config file installed: $CONFIG_DEST"
-fi
-
 # Cleanup
 rm -rf "$TMPDIR"
 
@@ -76,6 +56,6 @@ echo ""
 echo "=== Done ==="
 echo ""
 echo "To start the tunnel:"
-echo "  cloudflared tunnel --config $CONFIG_DEST run x9-150-py"
+echo "  cloudflared tunnel --url http://localhost:5010 run $TUNNEL_NAME"
 echo ""
 echo "Make sure qr_appserver.py is running on localhost:5010"

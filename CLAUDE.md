@@ -129,6 +129,21 @@ Resources:
 - **Commerce Kit** (`@solana/commerce-kit`) — Drop-in payment verification for QR/Pay flows
 - **Migration to `@solana/kit`** — Use `solana-kit-migration-skill` when ready
 
+## Deployment
+
+Deployed to **materalabs.us/x9.150** (business Cloudflare account). Single deployment — no flags needed:
+
+```bash
+npm run build && npx wrangler deploy
+```
+
+- `vite.config.ts` has `base: '/x9.150/'` hardcoded
+- `.env.production` sets `VITE_QRAPPSERVER_URL=/x9.150`
+- `wrangler.jsonc` routes to `materalabs.us/x9.150/*`
+- `worker.ts` strips `/x9.150` prefix, proxies API calls to tunnel, serves static assets
+
+See `CLOUDFLARE.md` for full deployment and tunnel details.
+
 ## Backend / QR Server
 
 The app communicates with a QR payment server (`VITE_QRAPPSERVER_URL`, default `http://localhost:5010`). The endpoints `/fetch`, `/generate`, and `/notify` may need updates on the server side to support Solana addresses and transaction formats. This is **out of scope** for this repo.

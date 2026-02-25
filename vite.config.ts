@@ -5,6 +5,7 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig(() => {
   return {
+    base: '/x9.150/',
     server: {
       port: 3000,
       host: '0.0.0.0',

@@ -261,3 +261,21 @@ Three changes:
 ### Lesson learned
 
 Never use `100vh` for full-height mobile layouts. Use `100dvh` instead. The `dvh` unit is supported in all modern browsers (Safari 15.4+, Chrome 108+, Firefox 101+). For the bottom nav specifically, always account for `env(safe-area-inset-bottom)` on notched/Dynamic Island iPhones — it covers both the home indicator and any browser chrome overlap.
+
+---
+
+## Consolidated to business account only (Feb 2026)
+
+The wallet originally had dual deployment configs — personal account (`materalab.us`, `wrangler.jsonc` + `worker.ts`) and business account (`materalabs.us/x9.150`, `wrangler-materalabs.jsonc` + `worker-materalabs.ts`). This was simplified to a single deployment on the business account only.
+
+### What changed
+
+- Deleted the personal account files (`wrangler.jsonc`, `worker.ts`, `.env.production`)
+- Renamed materalabs files to be the primary files (`wrangler-materalabs.jsonc` → `wrangler.jsonc`, `worker-materalabs.ts` → `worker.ts`, `.env.materalabs` → `.env.production`)
+- Hardcoded `base: '/x9.150/'` in `vite.config.ts` — no more `--base` or `--mode` CLI flags needed
+- Updated tunnel scripts (`tunnel-pack.sh`, `tunnel-unpack.sh`) to use the materalabs tunnel
+- Deploy is now just `npm run build && npx wrangler deploy`
+
+### Why
+
+Maintaining two parallel deployment configs added complexity with no benefit. The business account deployment (`materalabs.us/x9.150`) was the primary target. The personal account deployment was only used during initial development.
