@@ -37,7 +37,7 @@ Each deployment lives entirely within one Cloudflare account (Worker + DNS zone 
 | DNS zone `materalabs.us` | Tic.cloud@matera.com | `45281eba1857e04d45fe46d31bdc2f0b` |
 | Worker `x9-150-wallet` | Tic.cloud@matera.com | `45281eba1857e04d45fe46d31bdc2f0b` |
 | Route `materalabs.us/x9.150/*` | Tic.cloud@matera.com | `45281eba1857e04d45fe46d31bdc2f0b` |
-| Tunnel (TBD) | Tic.cloud@matera.com | `45281eba1857e04d45fe46d31bdc2f0b` |
+| Tunnel `x9-api-materalabs` | Tic.cloud@matera.com | `45281eba1857e04d45fe46d31bdc2f0b` |
 
 The materalabs.us worker uses a **route** (`materalabs.us/x9.150/*`) instead of a custom domain. This allows it to coexist with the existing "materalabs" worker that serves the root domain. Cloudflare routes are matched by specificity — the `/x9.150/*` route takes priority over the catch-all.
 
@@ -78,10 +78,17 @@ The cert at `~/.cloudflared/cert.pem` is tied to a specific zone. Tunnel operati
 
 ## DNS Records
 
+### materalab.us (personal)
 | Type | Name | Content | Notes |
 |---|---|---|---|
 | Worker | x9-150 | x9-150 | Custom domain for the Worker |
 | Tunnel | x9-api | x9-150-py | Routes to cloudflared tunnel |
+
+### materalabs.us (business)
+| Type | Name | Content | Notes |
+|---|---|---|---|
+| Worker | materalabs.us | materalabs | Existing worker (root domain — do not touch) |
+| Tunnel | x9-api | x9-api-materalabs | Routes to cloudflared tunnel |
 
 ## Files
 
