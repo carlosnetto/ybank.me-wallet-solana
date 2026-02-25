@@ -272,8 +272,7 @@ export const PayView: React.FC<PayProps> = ({ onCancel, onPay, address }) => {
       const tipAmount = baseAmount * (tipPercent / 100);
       const totalAmount = baseAmount + tipAmount;
 
-      // Pay 100 times less as requested for testing
-      const amountToPay = (totalAmount / 100).toFixed(2);
+      const amountToPay = totalAmount.toFixed(2);
 
       // Find the payment method for USDC on the Solana network
       const solanaMethod = paymentData.paymentMethods?.find((m: any) =>
