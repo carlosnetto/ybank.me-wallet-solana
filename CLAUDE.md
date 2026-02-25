@@ -104,6 +104,7 @@ Key details:
 3. **Silent error catching hides real failures** — Never catch all errors as "balance is 0". Distinguish between "account not found" (expected) and network errors (unexpected).
 4. **Simulate before sending** — Catches insufficient balance/fees before the user waits for a failed transaction.
 5. **Never use `100vh` for mobile layouts** — iOS Safari's `100vh` includes the area behind the browser toolbar. Use `100dvh` instead, and use `env(safe-area-inset-bottom)` for bottom-positioned elements. See HISTORY.md for the full story.
+6. **`getParsedTransactions` (plural) fails on public RPCs** — It sends a JSON-RPC batch request. `publicnode.com` limits batch `getTransaction` to 1 call, returning 400. Use `Promise.all` over individual `getParsedTransaction` (singular) calls instead — same parallelism, separate HTTP requests. See HISTORY.md.
 
 ## Ecosystem Direction (As of Feb 2026)
 
