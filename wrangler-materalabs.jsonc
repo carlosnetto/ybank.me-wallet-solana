@@ -4,10 +4,12 @@
   "compatibility_date": "2026-02-23",
   "main": "./worker-materalabs.ts",
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    "binding": "ASSETS"
   },
   "routes": [
-    { "pattern": "materalabs.us/x9.150/*", "zone_name": "materalabs.us" }
+    { "pattern": "materalabs.us/x9.150/*", "zone_name": "materalabs.us" },
+    { "pattern": "materalabs.us/x9.150", "zone_name": "materalabs.us" }
   ],
   "vars": {
     "API_TUNNEL_URL": "https://x9-api.materalabs.us",
