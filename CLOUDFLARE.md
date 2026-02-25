@@ -66,15 +66,14 @@ npx wrangler whoami  # Verify: should show "Carlos Netto" / 8a5cfa2e...
 
 ### Cloudflared Login
 
-Cloudflared also needs its own authentication per zone:
+Cloudflared uses `~/.cloudflared/cert.pem` — tied to a single zone. Currently set to **materalabs.us** (business account). To switch zones:
 
 ```bash
-# Move existing cert if switching accounts
-mv ~/.cloudflared/cert.pem ~/.cloudflared/cert.pem.backup
-cloudflared tunnel login  # Opens browser — select materalab.us zone
+rm ~/.cloudflared/cert.pem
+cloudflared tunnel login  # Opens browser — select the target zone
 ```
 
-The cert at `~/.cloudflared/cert.pem` is tied to a specific zone. Tunnel operations (create, route dns) use this cert to determine which account/zone to act on.
+Tunnel operations (create, route dns) use this cert to determine which account/zone to act on.
 
 ## DNS Records
 
@@ -136,27 +135,45 @@ npx wrangler deploy --config wrangler-materalabs.jsonc
 
 **Note:** `wrangler login` must be done with an account that has access to the target account before deploying. For the business deployment, log in as `carlos.netto@matera.com` (who has access to tic.cloud).
 
-### Start the tunnel (run from any directory)
+### Start the tunnel
 
 ```bash
+# Materalabs tunnel (business account — primary)
+cloudflared tunnel --url http://localhost:5010 run x9-api-materalabs
+
+# Personal account tunnel (uses config file)
 cloudflared tunnel --config /Users/cnetto/Git/x9.150-py/cloudflared-config.yml run x9-150-py
 ```
 
 ## Tunnel Details
 
+### x9-api-materalabs (business — primary)
+
+- **Tunnel name:** `x9-api-materalabs`
+- **Tunnel ID:** `2b0989c9-0117-4240-93ae-c4d2232bfcf1`
+- **Credentials:** `~/.cloudflared/2b0989c9-0117-4240-93ae-c4d2232bfcf1.json`
+- **Routes:** `x9-api.materalabs.us` → `http://localhost:5010`
+
+### x9-150-py (personal)
+
 - **Tunnel name:** `x9-150-py`
 - **Tunnel ID:** `a04396d8-5ca2-40f8-9a67-d8206fbb74fe`
-- **Credentials:** `~/.cloudflared/a04396d8-5ca2-40f8-9a67-d8206fbb74fe.json`
+- **Credentials:** Deleted during cleanup (Feb 2026). Recreate if needed.
 - **Config:** `/Users/cnetto/Git/x9.150-py/cloudflared-config.yml`
 - **Routes:** `x9-api.materalab.us` → `http://localhost:5010`
 
 ## How the API Proxy Works
 
-The Worker (`worker.ts`) intercepts requests to `/fetch`, `/generate`, and `/notify` and proxies them to the tunnel URL (`https://x9-api.materalab.us`). All other requests are served as static assets from `dist/`.
+Both deployments use the same pattern: the Worker intercepts `/fetch`, `/generate`, and `/notify` requests and proxies them to a tunnel URL. All other requests are served as static assets.
 
-In production builds, `VITE_QRAPPSERVER_URL` is empty (set via `.env.production`), so the frontend uses relative URLs (`/fetch`, `/generate`, `/notify`) which hit the same origin — the Worker.
+| Deployment | Worker | API paths | Tunnel URL |
+|---|---|---|---|
+| materalab.us | `worker.ts` | `/fetch`, `/generate`, `/notify` | `https://x9-api.materalab.us` |
+| materalabs.us/x9.150 | `worker-materalabs.ts` | `/x9.150/fetch`, etc. (prefix stripped) | `https://x9-api.materalabs.us` |
 
-In local dev, `.env.local` sets `VITE_QRAPPSERVER_URL=http://localhost:5010`, so the frontend talks directly to the Python server.
+**Production builds:** `VITE_QRAPPSERVER_URL` is empty (materalab.us) or `/x9.150` (materalabs.us), so the frontend uses same-origin URLs that hit the Worker.
+
+**Local dev:** `.env.local` sets `VITE_QRAPPSERVER_URL=http://localhost:5010`, so the frontend talks directly to the Python server.
 
 ## Lessons Learned
 
@@ -187,6 +204,21 @@ Vite loads `.env.local` in both dev and production. To override a value for prod
 ### 8. Don't upload source files to Cloudflare
 Only upload `dist/` (the built output). If the source `index.html` (which references `index.tsx`) gets deployed, the app shows a white page because the browser can't load uncompiled TypeScript.
 
+### 9. Workers Static Assets require explicit `binding` for `env.ASSETS`
+When using `assets` with `main` (worker code), you must set `"binding": "ASSETS"` in the assets config. Without it, `env.ASSETS` is `undefined` and the worker crashes with error 1101. This is easy to miss because the personal deployment (`wrangler.jsonc`) works without it — Cloudflare serves assets automatically when there's no prefix stripping needed.
+
+### 10. `~/.cloudflared/config.yml` overrides tunnel credentials
+If a `config.yml` exists in `~/.cloudflared/`, cloudflared uses its `tunnel` and `credentials-file` fields even when you specify a different tunnel name on the command line. This caused the tunnel to connect with the wrong credentials ("Unauthorized: Tunnel not found"). Fix: delete the stale `config.yml`, or use `--credentials-file` explicitly.
+
+### 11. `cloudflared tunnel route dns` fails by name, works by UUID
+When running `cloudflared tunnel route dns <name> <hostname>`, cloudflared may fail with "Tunnel not found" if there are name collisions across accounts. Using the tunnel UUID directly always works:
+```bash
+cloudflared tunnel route dns <TUNNEL-UUID> <hostname>
+```
+
+### 12. Keep `~/.cloudflared/` clean
+Stale credential files and config files from old projects cause hard-to-debug issues. After this session, `~/.cloudflared/` was cleaned down to just the active tunnel credentials (`2b0989c9-...json`) and the materalabs cert (`cert.pem`).
+
 ## Sub-Path Deployment Details (materalabs.us/x9.150)
 
 The materalabs deployment serves the app under `/x9.150/` instead of root. This requires:
@@ -199,4 +231,5 @@ The worker also includes SPA fallback: any non-asset path that returns 404 from 
 
 ## Cleanup Notes
 
-The old Worker `x9-150` was previously deleted from the business account (`45281eba...`). The new Worker `x9-150-wallet` now lives on that account with a route-based deployment instead of a custom domain.
+- The old Worker `x9-150` was previously deleted from the business account (`45281eba...`). The new Worker `x9-150-wallet` now lives on that account with a route-based deployment instead of a custom domain.
+- `~/.cloudflared/` was cleaned (Feb 2026): removed stale credentials for zoripay (`4e391a95`) and unknown (`4b55a798`) tunnels, removed `config.yml` that was overriding tunnel selection, and removed the personal account tunnel credentials (`a04396d8` / `x9-150-py`). Only the materalabs tunnel credentials and cert remain.
