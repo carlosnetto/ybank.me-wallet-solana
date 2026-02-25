@@ -4,7 +4,7 @@
 
 set -e
 
-TUNNEL_ID="2b0989c9-0117-4240-93ae-c4d2232bfcf1"
+TUNNEL_ID="6eb8781a-6b88-4fc9-aa8b-195f4e9e2d04"
 TUNNEL_NAME="x9-api-materalabs"
 CREDS_FILE="$HOME/.cloudflared/${TUNNEL_ID}.json"
 OUTPUT="x9-api-materalabs-tunnel.zip"
