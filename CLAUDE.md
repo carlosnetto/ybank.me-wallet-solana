@@ -129,6 +129,19 @@ Resources:
 - **Commerce Kit** (`@solana/commerce-kit`) — Drop-in payment verification for QR/Pay flows
 - **Migration to `@solana/kit`** — Use `solana-kit-migration-skill` when ready
 
+## Claude Code Skills
+
+Reusable skills extracted from this project live at **https://github.com/carlosnetto/claude-skills**:
+
+- **`solana-wallet-skill`** — Solana wallet/payment patterns (RPC, key derivation, SPL tokens, transactions, error handling, Vite config)
+- **`cloudflare-deployment-skill`** — Cloudflare Workers deployment (routes, tunnels, shared servers, multi-account, sub-path serving, security)
+
+Install with:
+```bash
+bash claude-skills/solana-wallet-skill/install.sh
+bash claude-skills/cloudflare-deployment-skill/install.sh
+```
+
 ## Deployment
 
 Deployed to **materalabs.us/x9.150** (business Cloudflare account). Single deployment — no flags needed:
