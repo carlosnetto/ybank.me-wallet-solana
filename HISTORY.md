@@ -190,6 +190,47 @@ The function had a `try/catch` returning `"0.00"` on any error. But `getBalance`
 
 ---
 
+## Dual deployment: materalab.us + materalabs.us/x9.150 (Feb 2026)
+
+The wallet was originally deployed to `x9-150.carlos-netto.workers.dev` (personal Cloudflare account). The goal was to also deploy to `materalabs.us/x9.150` on the business account (tic.cloud@matera.com), where an existing "materalabs" worker already serves the root domain.
+
+### Challenge: sub-path deployment
+
+Serving a single-page app under a sub-path (`/x9.150/`) instead of at root requires three things to align:
+
+1. **Vite build** must prefix all asset references with `/x9.150/` — otherwise `index.html` tries to load `/assets/index-xxx.js` which hits the existing materalabs worker (404)
+2. **The worker** must strip `/x9.150` from incoming requests before serving assets from the `ASSETS` binding — because `dist/` contains `assets/index-xxx.js`, not `x9.150/assets/index-xxx.js`
+3. **Frontend API calls** must go to `/x9.150/fetch` (not `/fetch`) — otherwise they hit the existing materalabs worker instead of our worker's route
+
+### Solution: separate config per deployment
+
+Created a fully independent deployment config — no existing files touched:
+
+| File | Purpose |
+|---|---|
+| `wrangler-materalabs.jsonc` | Wrangler config with route `materalabs.us/x9.150/*` |
+| `worker-materalabs.ts` | Worker that strips `/x9.150` prefix before serving assets or proxying API calls |
+| `.env.materalabs` | Sets `VITE_QRAPPSERVER_URL=/x9.150` so React app's API calls target the right path |
+
+Cloudflare routes are matched by specificity — `materalabs.us/x9.150/*` takes priority over the existing worker's catch-all, so only `/x9.150/*` traffic goes to our worker. The rest of `materalabs.us` is unaffected.
+
+Build & deploy for each target:
+
+```bash
+# Personal account (unchanged)
+npx vite build && npx wrangler deploy
+
+# Materalabs (new)
+npx vite build --base=/x9.150/ --mode materalabs
+npx wrangler deploy --config wrangler-materalabs.jsonc
+```
+
+### Lesson learned
+
+Vite's `--base` flag and `--mode` flag are the key to multi-target deployments. `--base=/x9.150/` rewrites all asset paths in `index.html`, and `--mode materalabs` loads `.env.materalabs` to configure runtime behavior. No changes to `vite.config.ts` needed — CLI flags handle everything.
+
+---
+
 ## Navigation bar hidden on iPhone 16 (Feb 2026)
 
 On iPhone 16 (Safari), the bottom navigation bar (Send, Receive, Pay, Charge, Settings) was completely hidden behind the browser's bottom toolbar. Only the top of the blue Pay button was barely visible. Users could not access any wallet actions without knowing to swipe up.

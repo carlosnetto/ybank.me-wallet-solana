@@ -2,22 +2,44 @@
 
 ## Architecture
 
+Two independent deployments from the same codebase:
+
 ```
-User → x9-150.materalab.us (Cloudflare Worker)
+# Deployment 1: Personal account (materalab.us)
+User → x9-150.materalab.us (Worker: x9-150)
          ├─ /fetch, /generate, /notify → proxied to tunnel
          │     → x9-api.materalab.us → cloudflared → localhost:5010 → qr_appserver.py
          └─ everything else → static assets (dist/)
+
+# Deployment 2: Business account (materalabs.us)
+User → materalabs.us/x9.150/* (Worker: x9-150-wallet, route-based)
+         ├─ /x9.150/fetch, /generate, /notify → strip prefix → proxy to tunnel
+         │     → x9-api.materalabs.us → cloudflared → localhost:5010 → qr_appserver.py
+         └─ /x9.150/* → strip prefix → static assets (dist/)
 ```
 
 ## Account Setup
 
-**All resources are on the same Cloudflare account:**
+Each deployment lives entirely within one Cloudflare account (Worker + DNS zone + tunnel must match):
+
+### Deployment 1: Personal account (materalab.us)
 
 | Resource | Account | Account ID |
 |---|---|---|
 | DNS zone `materalab.us` | Carlos Netto (gmail) | `8a5cfa2ea39c6e7e6e049f5a3ce13aa3` |
 | Worker `x9-150` | Carlos Netto (gmail) | `8a5cfa2ea39c6e7e6e049f5a3ce13aa3` |
 | Tunnel `x9-150-py` | Carlos Netto (gmail) | `8a5cfa2ea39c6e7e6e049f5a3ce13aa3` |
+
+### Deployment 2: Business account (materalabs.us)
+
+| Resource | Account | Account ID |
+|---|---|---|
+| DNS zone `materalabs.us` | Tic.cloud@matera.com | `45281eba1857e04d45fe46d31bdc2f0b` |
+| Worker `x9-150-wallet` | Tic.cloud@matera.com | `45281eba1857e04d45fe46d31bdc2f0b` |
+| Route `materalabs.us/x9.150/*` | Tic.cloud@matera.com | `45281eba1857e04d45fe46d31bdc2f0b` |
+| Tunnel (TBD) | Tic.cloud@matera.com | `45281eba1857e04d45fe46d31bdc2f0b` |
+
+The materalabs.us worker uses a **route** (`materalabs.us/x9.150/*`) instead of a custom domain. This allows it to coexist with the existing "materalabs" worker that serves the root domain. Cloudflare routes are matched by specificity — the `/x9.150/*` route takes priority over the catch-all.
 
 ### Critical Lesson: Account Mismatch
 
@@ -63,32 +85,55 @@ The cert at `~/.cloudflared/cert.pem` is tied to a specific zone. Tunnel operati
 
 ## Files
 
+### Shared
 | File | Purpose |
 |---|---|
-| `wrangler.jsonc` | Worker config: name, account, assets, API tunnel URL |
-| `worker.ts` | Reverse proxy for API paths + static asset serving |
-| `.env.production` | Overrides `VITE_QRAPPSERVER_URL` to empty (same-origin) for production builds |
 | `.env.local` | Local dev: `VITE_QRAPPSERVER_URL=http://localhost:5010` |
-| `x9.150-py/cloudflared-config.yml` | Tunnel config: routes `x9-api.materalab.us` → `localhost:5010` |
+
+### Deployment 1: materalab.us (personal)
+| File | Purpose |
+|---|---|
+| `wrangler.jsonc` | Worker config: name `x9-150`, personal account, assets |
+| `worker.ts` | Reverse proxy for API paths + static asset serving (root path) |
+| `.env.production` | `VITE_QRAPPSERVER_URL=` (empty — same-origin API calls) |
+| `x9.150-py/cloudflared-config.yml` | Tunnel config: `x9-api.materalab.us` → `localhost:5010` |
+
+### Deployment 2: materalabs.us/x9.150 (business)
+| File | Purpose |
+|---|---|
+| `wrangler-materalabs.jsonc` | Worker config: name `x9-150-wallet`, tic.cloud account, route `materalabs.us/x9.150/*` |
+| `worker-materalabs.ts` | Strips `/x9.150` prefix, then proxies API calls or serves assets + SPA fallback |
+| `.env.materalabs` | `VITE_QRAPPSERVER_URL=/x9.150` (API calls go to `/x9.150/fetch` etc.) |
 
 ## Deploy Commands
 
-### Deploy the wallet app
+### Deployment 1: materalab.us (personal)
 
 ```bash
-npm run build && npx wrangler deploy
+# Build (default mode=production, base=/)
+npm run build
+
+# Deploy (uses wrangler.jsonc → x9-150.carlos-netto.workers.dev / x9-150.materalab.us)
+npx wrangler deploy
 ```
+
+### Deployment 2: materalabs.us/x9.150 (business)
+
+```bash
+# Build with /x9.150/ base path and materalabs env
+npx vite build --base=/x9.150/ --mode materalabs
+
+# Deploy (uses wrangler-materalabs.jsonc → materalabs.us/x9.150)
+npx wrangler deploy --config wrangler-materalabs.jsonc
+```
+
+**Note:** `wrangler login` must be done with an account that has access to the target account before deploying. For the business deployment, log in as `carlos.netto@matera.com` (who has access to tic.cloud).
 
 ### Start the tunnel (run from any directory)
 
 ```bash
 cloudflared tunnel --config /Users/cnetto/Git/x9.150-py/cloudflared-config.yml run x9-150-py
 ```
-
-### Both together
-
-1. Start tunnel in one terminal
-2. Deploy in another: `npm run build && npx wrangler deploy`
 
 ## Tunnel Details
 
@@ -135,6 +180,16 @@ Vite loads `.env.local` in both dev and production. To override a value for prod
 ### 8. Don't upload source files to Cloudflare
 Only upload `dist/` (the built output). If the source `index.html` (which references `index.tsx`) gets deployed, the app shows a white page because the browser can't load uncompiled TypeScript.
 
+## Sub-Path Deployment Details (materalabs.us/x9.150)
+
+The materalabs deployment serves the app under `/x9.150/` instead of root. This requires:
+
+1. **Build-time:** `vite build --base=/x9.150/` rewrites asset paths in `index.html` to `/x9.150/assets/...`
+2. **Runtime (worker):** `worker-materalabs.ts` strips the `/x9.150` prefix from all incoming requests before serving assets from the `ASSETS` binding (since `dist/` has `assets/...`, not `x9.150/assets/...`)
+3. **Runtime (frontend):** `.env.materalabs` sets `VITE_QRAPPSERVER_URL=/x9.150` so API calls go to `/x9.150/fetch` (matching our worker's route) instead of `/fetch` (which would hit the existing materalabs worker)
+
+The worker also includes SPA fallback: any non-asset path that returns 404 from `ASSETS` is served `index.html` instead, allowing client-side routing to work.
+
 ## Cleanup Notes
 
-The Worker `x9-150` was deleted from the business account (`45281eba...`). If it needs to be recreated there in the future, update `account_id` in `wrangler.jsonc` and re-login wrangler.
+The old Worker `x9-150` was previously deleted from the business account (`45281eba...`). The new Worker `x9-150-wallet` now lives on that account with a route-based deployment instead of a custom domain.
