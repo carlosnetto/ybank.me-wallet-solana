@@ -313,3 +313,27 @@ The production server also runs a zoripay tunnel with its own `~/.cloudflared/co
 ### Lesson learned
 
 On shared servers, never rely on default `~/.cloudflared/config.yml` or `cert.pem`. Each tunnel must be fully self-contained: dedicated config file, explicit credentials path, run by UUID. The `--url` and `--credentials-file` CLI flags are **not** sufficient — `config.yml` ingress rules silently override them.
+
+---
+
+## Claude Code skills extracted to dedicated repository (Feb 2026)
+
+The project had accumulated two Claude Code skills — reusable knowledge packages that make hard-won lessons available across all sessions:
+
+1. **`solana-wallet-skill`** — Patterns for building Solana wallet/payment apps in React/TypeScript with Vite (RPC selection, HD key derivation, SPL token operations, transaction lifecycle, error handling, bundler config). Created from lessons in this HISTORY.md and CLAUDE.md.
+
+2. **`cloudflare-deployment-skill`** — Patterns for deploying apps on Cloudflare Workers with tunnels, sub-path routing, and multi-account setups (worker configuration, tunnel management, shared-server pitfalls, credential security). Created from lessons in CLOUDFLARE.md and the tunnel hijack incident above.
+
+Both skills were moved from this repo to a dedicated repository: **https://github.com/carlosnetto/claude-skills**
+
+Each skill has:
+- `SKILL.md` — Main skill definition with frontmatter, operating procedure, quick reference, critical rules
+- `install.sh` — Installs to `~/.claude/skills/` for use in all Claude Code sessions
+- `topics/` — Detailed topic files with problem/solution/pitfalls patterns
+
+To install either skill:
+```bash
+git clone https://github.com/carlosnetto/claude-skills.git
+bash claude-skills/solana-wallet-skill/install.sh
+bash claude-skills/cloudflare-deployment-skill/install.sh
+```
