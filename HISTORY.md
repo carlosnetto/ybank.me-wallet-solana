@@ -279,3 +279,37 @@ The wallet originally had dual deployment configs — personal account (`materal
 ### Why
 
 Maintaining two parallel deployment configs added complexity with no benefit. The business account deployment (`materalabs.us/x9.150`) was the primary target. The personal account deployment was only used during initial development.
+
+---
+
+## Unauthorized tunnel connector and credential rotation (Feb 2026)
+
+QR code generation stopped working — the app showed "API returned 530" (Cloudflare: origin unreachable). Investigation revealed the tunnel had an active connector from an unknown IP (`67.159.247.146` / Mundivox, São Paulo) while `cloudflared` was not running on any of our machines. Someone had obtained the tunnel credentials JSON and was running their own `cloudflared` instance against our tunnel.
+
+### Discovery
+
+1. `cloudflared tunnel info` showed 4 active connections from an IP that didn't match our machines
+2. `lsof -i :5010` showed a mystery Python process on the dev machine (later disappeared)
+3. The tunnel was accepting traffic but routing it to the unauthorized connector instead of our QR server
+
+### Fix: credential rotation
+
+1. `cloudflared tunnel cleanup x9-api-materalabs` — disconnected the rogue connector
+2. `cloudflared tunnel delete x9-api-materalabs` — destroyed the compromised tunnel
+3. `cloudflared tunnel create x9-api-materalabs` — new tunnel with fresh credentials (`6eb8781a-...`)
+4. `cloudflared tunnel route dns -f x9-api-materalabs x9-api.materalabs.us` — updated DNS CNAME
+5. Updated `tunnel.sh`, `tunnel-pack.sh`, `tunnel-unpack.sh` with the new tunnel ID
+
+### Problem: shared server with multiple tunnels
+
+The production server also runs a zoripay tunnel with its own `~/.cloudflared/config.yml`. Three issues hit in sequence:
+
+1. **`run x9-api-materalabs` failed** — cloudflared looked up the tunnel name via `cert.pem`, which was tied to the zoripay account. Fix: run by UUID instead of name.
+
+2. **No request logs, 404 on all endpoints** — even though the tunnel connected successfully (4 GRU connections), no traffic reached the QR server. The default `config.yml` had a catch-all `http_status:404` ingress rule that intercepted all requests before they could reach `--url http://localhost:5010`. Cloudflared silently prioritizes `config.yml` over CLI flags.
+
+3. **Fix: dedicated config per tunnel** — `tunnel.sh` now auto-creates `~/.cloudflared/x9-api-materalabs.yml` with its own tunnel ID, credentials path, and ingress rules. Running with `--config` bypasses the default `config.yml` entirely.
+
+### Lesson learned
+
+On shared servers, never rely on default `~/.cloudflared/config.yml` or `cert.pem`. Each tunnel must be fully self-contained: dedicated config file, explicit credentials path, run by UUID. The `--url` and `--credentials-file` CLI flags are **not** sufficient — `config.yml` ingress rules silently override them.
