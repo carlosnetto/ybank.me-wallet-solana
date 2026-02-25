@@ -31,3 +31,5 @@ export interface WalletState {
 
 export const USDC_MINT_SOLANA = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 export const SOLANA_RPC_URL = 'https://solana-rpc.publicnode.com';
+export const RPC_TIMEOUT_MS = 15_000;    // 15s per-request timeout
+export const TX_HISTORY_LIMIT = 10;       // signatures to fetch for history

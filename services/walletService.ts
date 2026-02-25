@@ -14,7 +14,7 @@ import {
 } from '@solana/spl-token';
 import * as bip39 from 'bip39';
 import { HDKey } from 'micro-key-producer/slip10.js';
-import { SOLANA_RPC_URL, USDC_MINT_SOLANA, Transaction } from '../types';
+import { SOLANA_RPC_URL, USDC_MINT_SOLANA, RPC_TIMEOUT_MS, TX_HISTORY_LIMIT, Transaction } from '../types';
 
 const USDC_MINT = new PublicKey(USDC_MINT_SOLANA);
 const USDC_DECIMALS = 6;
@@ -25,7 +25,17 @@ let connectionInstance: Connection | null = null;
 
 export const getConnection = (): Connection => {
   if (!connectionInstance) {
-    connectionInstance = new Connection(SOLANA_RPC_URL, 'confirmed');
+    const timeoutFetch: typeof fetch = (input, init) => {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), RPC_TIMEOUT_MS);
+      return fetch(input, { ...init, signal: controller.signal }).finally(() =>
+        clearTimeout(id)
+      );
+    };
+    connectionInstance = new Connection(SOLANA_RPC_URL, {
+      commitment: 'confirmed',
+      fetch: timeoutFetch,
+    });
   }
   return connectionInstance;
 };
@@ -42,16 +52,11 @@ export const getKeypairFromMnemonic = (phrase: string): Keypair => {
 };
 
 export const getSOLBalance = async (address: string): Promise<string> => {
-  try {
-    const connection = getConnection();
-    const pubkey = new PublicKey(address);
-    const balance = await connection.getBalance(pubkey);
-    // Lamports to SOL (10^9)
-    return (balance / 1e9).toFixed(9);
-  } catch (error) {
-    console.error("Error fetching SOL balance:", error);
-    return "0.00";
-  }
+  const connection = getConnection();
+  const pubkey = new PublicKey(address);
+  const balance = await connection.getBalance(pubkey);
+  // Lamports to SOL (10^9)
+  return (balance / 1e9).toFixed(9);
 };
 
 export const getUSDCBalance = async (address: string): Promise<string> => {
@@ -195,27 +200,24 @@ export const getRecentTransactions = async (address: string): Promise<Transactio
     const ata = await getAssociatedTokenAddress(USDC_MINT, ownerPubkey);
 
     // Fetch recent signatures for the token account
-    const signatures = await connection.getSignaturesForAddress(ata, { limit: 20 });
+    const signatures = await connection.getSignaturesForAddress(ata, { limit: TX_HISTORY_LIMIT });
 
     if (signatures.length === 0) return [];
 
-    // Fetch parsed transactions in batches
+    // Fetch all parsed transactions in parallel (individual calls, not batch,
+    // because publicnode.com limits batch getTransaction to 1)
     const transactions: Transaction[] = [];
-    const BATCH_SIZE = 5;
+    const parsedTxs = await Promise.all(
+      signatures.map(sig =>
+        connection.getParsedTransaction(sig.signature, {
+          maxSupportedTransactionVersion: 0,
+        }).catch(() => null)
+      )
+    );
 
-    for (let i = 0; i < signatures.length; i += BATCH_SIZE) {
-      const batch = signatures.slice(i, i + BATCH_SIZE);
-      const parsedTxs = await Promise.all(
-        batch.map(sig =>
-          connection.getParsedTransaction(sig.signature, {
-            maxSupportedTransactionVersion: 0,
-          }).catch(() => null)
-        )
-      );
-
-      for (let j = 0; j < parsedTxs.length; j++) {
+    for (let j = 0; j < parsedTxs.length; j++) {
         const parsedTx = parsedTxs[j];
-        const sigInfo = batch[j];
+        const sigInfo = signatures[j];
 
         if (!parsedTx?.meta || parsedTx.meta.err) continue;
 
@@ -257,7 +259,6 @@ export const getRecentTransactions = async (address: string): Promise<Transactio
             }
           }
         }
-      }
     }
 
     // Deduplicate by signature

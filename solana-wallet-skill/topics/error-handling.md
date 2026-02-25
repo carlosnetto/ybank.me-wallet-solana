@@ -67,13 +67,17 @@ Catch and translate for the user.
 
 ## Polling Pattern
 
-For balance/history polling, catch errors per-poll but don't crash:
+For balance/history polling, catch errors per-poll but don't crash. Use overlap guards to prevent pile-up on slow networks:
 
 ```typescript
 useEffect(() => {
   if (!wallet || !address) return;
 
+  let balancePending = false;
+
   const fetchBalances = async () => {
+    if (balancePending) return; // skip if previous poll still in-flight
+    balancePending = true;
     try {
       const [usdcBal, solBal] = await Promise.all([
         getUSDCBalance(address),
@@ -84,6 +88,8 @@ useEffect(() => {
     } catch (error) {
       console.warn("Balance poll failed, will retry:", error);
       // Don't update state — keep showing last known balance
+    } finally {
+      balancePending = false;
     }
   };
 
@@ -98,6 +104,27 @@ Key points:
 - Keep showing the last known balance on failure
 - Use `console.warn` not `console.error` for transient poll failures
 - Fetch immediately on mount, then poll on interval
+- **Guard against overlap** — on slow networks (2s+ latency), a 10s interval fires before the previous poll finishes, piling up concurrent requests. The `pending` flag skips ticks when a poll is already in-flight
+
+## SOL Balance: Don't Swallow Network Errors
+
+`connection.getBalance()` returns 0 for non-existent accounts (no exception). So a try/catch returning `"0.00"` only hides real failures:
+
+```typescript
+// BAD — hides timeouts, 403s, rate limits
+try {
+  const balance = await connection.getBalance(pubkey);
+  return (balance / 1e9).toFixed(9);
+} catch {
+  return "0.00";
+}
+
+// GOOD — let network errors propagate to the polling catch
+const balance = await connection.getBalance(pubkey);
+return (balance / 1e9).toFixed(9);
+```
+
+This is different from `getAccount()` for SPL tokens, where `TokenAccountNotFoundError` is an expected case that should be caught.
 
 ## Debugging Checklist
 

@@ -158,6 +158,38 @@ Bundle size dropped from 1,556 KB to 996 KB (36% reduction) by removing `crypto-
 
 ---
 
+## RPC resilience: timeouts, batch limits, and poll overlap (Feb 2026)
+
+The app worked fine on mobile 5G but was painfully slow on corporate networks (firewall/proxy adding latency). Three issues were found and fixed:
+
+### 1. No request timeouts
+
+`@solana/web3.js` v1.x has no built-in timeout. On slow networks, a single RPC call could hang indefinitely, making the app appear frozen. Fixed by wrapping `fetch` with an `AbortController` (15s timeout) and passing it via `ConnectionConfig.fetch`.
+
+### 2. `getParsedTransactions` (plural) rejected by public RPC
+
+Transaction history originally used 4 sequential batches of `getParsedTransaction` (singular), 5 at a time — 5 round-trips total. The optimization attempt switched to `getParsedTransactions` (plural), which sends all signatures as a single JSON-RPC batch. But `solana-rpc.publicnode.com` limits `getTransaction` batch calls to 1:
+
+```
+400 Bad Request: "Maximum number of 'getTransaction' calls in a batch request is 1"
+```
+
+The outer `try/catch` returned `[]`, silently hiding all transactions. Fixed by using `Promise.all` over individual `getParsedTransaction` calls — parallel HTTP requests, not a JSON-RPC batch. Combined with reducing the signature limit from 20 to 10, history went from 5 sequential round-trips to 2 (1 for signatures + 1 parallel burst).
+
+### 3. Poll overlap on slow networks
+
+Balance polls (10s interval) and history polls (30s interval) could overlap when responses took longer than the interval. Fixed by adding `pending` boolean flags — if the previous poll is still in-flight, the new interval tick is skipped.
+
+### 4. `getSOLBalance` swallowing network errors
+
+The function had a `try/catch` returning `"0.00"` on any error. But `getBalance` returns 0 for non-existent accounts (no exception), so the catch only triggered on real failures (timeout, 403, rate limit). Removed the catch to let network errors propagate to the polling handler.
+
+### Lesson learned
+
+`getParsedTransactions` (plural) and `getParsedTransaction` (singular) differ in transport, not just API shape. The plural form sends a JSON-RPC batch request; the singular form sends individual HTTP requests. Free public RPCs restrict batch sizes, so the plural form silently fails. Always test against your actual RPC endpoint — don't assume batch methods work just because they exist in the SDK.
+
+---
+
 ## Navigation bar hidden on iPhone 16 (Feb 2026)
 
 On iPhone 16 (Safari), the bottom navigation bar (Send, Receive, Pay, Charge, Settings) was completely hidden behind the browser's bottom toolbar. Only the top of the blue Pay button was barely visible. Users could not access any wallet actions without knowing to swipe up.

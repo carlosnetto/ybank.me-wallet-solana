@@ -72,7 +72,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!wallet || !walletState.address) return;
 
+    let balancePending = false;
+    let historyPending = false;
+
     const fetchBalances = async () => {
+      if (balancePending) return;
+      balancePending = true;
       try {
         const [usdcBal, solBal] = await Promise.all([
           getUSDCBalance(walletState.address),
@@ -86,15 +91,21 @@ const App: React.FC = () => {
         }));
       } catch (error) {
         console.warn("Balance poll failed, will retry:", error);
+      } finally {
+        balancePending = false;
       }
     };
 
     const fetchHistory = async () => {
+      if (historyPending) return;
+      historyPending = true;
       try {
         const history = await getRecentTransactions(walletState.address);
         setWalletState(prev => ({ ...prev, transactions: history }));
       } catch (error) {
         console.warn("History poll failed, will retry:", error);
+      } finally {
+        historyPending = false;
       }
     };
 

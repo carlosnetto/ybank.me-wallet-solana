@@ -216,7 +216,74 @@ Kit is tree-shakeable and ~26% smaller. But web3.js v1.x works fine and has more
 
 ---
 
-## 11. Debugging Checklist
+## 11. Public RPCs: Batch Request Limits and Timeouts
+
+Free public RPCs impose limits that affect how you fetch data. Two key discoveries:
+
+### Batch JSON-RPC requests are restricted
+
+`solana-rpc.publicnode.com` limits `getTransaction` to **1 call per batch request**. The `@solana/web3.js` method `getParsedTransactions` (plural) sends all signatures as a single JSON-RPC batch, which gets rejected:
+
+```
+400 Bad Request: "Maximum number of 'getTransaction' calls in a batch request is 1"
+```
+
+**Fix:** Use `Promise.all` over individual `getParsedTransaction` (singular) calls. Each goes as a separate HTTP request, avoiding the batch limit while still running in parallel:
+
+```typescript
+// BAD — sends JSON-RPC batch, rejected by publicnode
+const txs = await connection.getParsedTransactions(sigStrings, opts);
+
+// GOOD — parallel individual requests, works everywhere
+const txs = await Promise.all(
+  signatures.map(sig =>
+    connection.getParsedTransaction(sig.signature, opts).catch(() => null)
+  )
+);
+```
+
+This is a publicnode-specific limit. Paid RPCs (Helius, QuickNode) allow larger batches.
+
+### Add per-request timeouts
+
+`@solana/web3.js` v1.x has no built-in request timeout. On slow networks (corporate firewalls, proxies), a single RPC call can hang indefinitely, blocking polling and making the app appear frozen.
+
+**Fix:** Wrap `fetch` with an `AbortController` and pass it via `ConnectionConfig.fetch`:
+
+```typescript
+const timeoutFetch: typeof fetch = (input, init) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 15_000); // 15s
+  return fetch(input, { ...init, signal: controller.signal })
+    .finally(() => clearTimeout(id));
+};
+
+connectionInstance = new Connection(SOLANA_RPC_URL, {
+  commitment: 'confirmed',
+  fetch: timeoutFetch,
+});
+```
+
+Every RPC call goes through this wrapper — no code changes needed elsewhere.
+
+### Guard polling against overlap
+
+On slow networks, a 10-second poll interval can fire before the previous poll finishes, piling up concurrent requests. Use a boolean flag per poller:
+
+```typescript
+let pending = false;
+const poll = async () => {
+  if (pending) return;   // skip if previous poll still in-flight
+  pending = true;
+  try { /* ... */ }
+  catch { /* ... */ }
+  finally { pending = false; }
+};
+```
+
+---
+
+## 12. Debugging Checklist
 
 When something doesn't work and you see no errors:
 
