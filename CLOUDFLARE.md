@@ -139,3 +139,12 @@ Stale credential files and config files from old projects cause hard-to-debug is
 
 ### 13. Account mismatch across multiple Cloudflare accounts
 The user has multiple Cloudflare accounts. The Worker, DNS zone, and tunnel MUST all be on the same account. To check which account a zone is on: look at the URL in the Cloudflare dashboard → `dash.cloudflare.com/<ACCOUNT_ID>/...`
+
+### 14. Never rely on default `config.yml` on shared servers
+On a server running multiple tunnels (possibly for different Cloudflare accounts), the default `~/.cloudflared/config.yml` belongs to another tunnel. Cloudflared reads it even when you pass `--credentials-file` and `--url` on the command line — the `ingress` rules in `config.yml` take priority, and requests to your hostname hit the catch-all `http_status:404` instead of your service. **Fix:** Always use a dedicated config file per tunnel with `--config`, making each tunnel fully self-contained. `tunnel.sh` now auto-creates `~/.cloudflared/x9-api-materalabs.yml` with its own tunnel ID, credentials path, and ingress rules.
+
+### 15. Run tunnels by UUID, not by name
+Running `cloudflared tunnel run <name>` requires cloudflared to look up the name via `cert.pem`, which is tied to a specific Cloudflare account. On a shared server where `cert.pem` belongs to a different account, the lookup fails with "not found". Running by UUID (`cloudflared tunnel run <UUID>`) with `--credentials-file` bypasses the cert entirely — no account login needed.
+
+### 16. Rotate tunnel credentials if an unauthorized connector appears
+`cloudflared tunnel info` shows the origin IP of each connector. If the IP doesn't match your machines, someone else has your credentials JSON. Fix: `cloudflared tunnel cleanup && cloudflared tunnel delete <name>`, then recreate with `cloudflared tunnel create`. The old credentials become useless immediately.
