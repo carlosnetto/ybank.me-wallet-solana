@@ -1,0 +1,5 @@
+# Cloudflare Tunnel ingress config for x9-api-materalabs → localhost:5010.
+# Tunnel identity and credentials come from .tunnel-token (gitignored).
+# Passed via --config to fully bypass ~/.cloudflared/config.yml on shared servers.
+ingress:
+  - service: http://localhost:5010
