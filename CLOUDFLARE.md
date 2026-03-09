@@ -68,14 +68,22 @@ npm run build && npx wrangler deploy
 ### Start the tunnel
 
 ```bash
-cloudflared tunnel --url http://localhost:5010 run x9-api-materalabs
+./tunnel.sh   # reads .tunnel-token, uses tunnel-config.yml
+```
+
+`tunnel.sh` reads the token from `.tunnel-token` (gitignored) and runs with `--config tunnel-config.yml` to bypass `~/.cloudflared/config.yml` on shared servers.
+
+To regenerate `.tunnel-token`:
+```bash
+cloudflared tunnel token 6eb8781a-6b88-4fc9-aa8b-195f4e9e2d04 > .tunnel-token
 ```
 
 ## Tunnel Details
 
 - **Tunnel name:** `x9-api-materalabs`
-- **Tunnel ID:** `2b0989c9-0117-4240-93ae-c4d2232bfcf1`
-- **Credentials:** `~/.cloudflared/2b0989c9-0117-4240-93ae-c4d2232bfcf1.json`
+- **Tunnel ID:** `6eb8781a-6b88-4fc9-aa8b-195f4e9e2d04`
+- **Token:** stored in `.tunnel-token` (gitignored)
+- **Config:** `tunnel-config.yml` (ingress only, committed to git)
 - **Routes:** `x9-api.materalabs.us` → `http://localhost:5010`
 
 ## How the API Proxy Works
@@ -141,7 +149,7 @@ Stale credential files and config files from old projects cause hard-to-debug is
 The user has multiple Cloudflare accounts. The Worker, DNS zone, and tunnel MUST all be on the same account. To check which account a zone is on: look at the URL in the Cloudflare dashboard → `dash.cloudflare.com/<ACCOUNT_ID>/...`
 
 ### 14. Never rely on default `config.yml` on shared servers
-On a server running multiple tunnels (possibly for different Cloudflare accounts), the default `~/.cloudflared/config.yml` belongs to another tunnel. Cloudflared reads it even when you pass `--credentials-file` and `--url` on the command line — the `ingress` rules in `config.yml` take priority, and requests to your hostname hit the catch-all `http_status:404` instead of your service. **Fix:** Always use a dedicated config file per tunnel with `--config`, making each tunnel fully self-contained. `tunnel.sh` now auto-creates `~/.cloudflared/x9-api-materalabs.yml` with its own tunnel ID, credentials path, and ingress rules.
+On a server running multiple tunnels (possibly for different Cloudflare accounts), the default `~/.cloudflared/config.yml` belongs to another tunnel. Cloudflared reads it even when you pass `--url` on the command line — the `ingress` rules in `config.yml` take priority, and requests to your hostname hit the catch-all `http_status:404` instead of your service. **Fix:** `tunnel.sh` uses `--config tunnel-config.yml` (committed to repo), making the tunnel fully self-contained and immune to whatever is in `~/.cloudflared/`.
 
 ### 15. Run tunnels by UUID, not by name
 Running `cloudflared tunnel run <name>` requires cloudflared to look up the name via `cert.pem`, which is tied to a specific Cloudflare account. On a shared server where `cert.pem` belongs to a different account, the lookup fails with "not found". Running by UUID (`cloudflared tunnel run <UUID>`) with `--credentials-file` bypasses the cert entirely — no account login needed.
