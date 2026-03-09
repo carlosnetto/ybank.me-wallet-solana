@@ -73,3 +73,19 @@ npm run build
 ```
 
 Output goes to `dist/`.
+
+## Deploy
+
+Deployed to **materalabs.us/x9.150** (Cloudflare Workers, business account).
+
+```bash
+npm run build && npx wrangler deploy
+```
+
+The QR payment backend runs on `localhost:5010` and is exposed via a Cloudflare tunnel:
+
+```bash
+./tunnel.sh   # reads .tunnel-token
+```
+
+See `CLOUDFLARE.md` for full deployment and tunnel details.
