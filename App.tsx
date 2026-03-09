@@ -22,10 +22,15 @@ const App: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [merchantSettings, setMerchantSettings] = useState(() => {
+    const sanitizePhone = (phone: string) =>
+      phone && !phone.startsWith('+') ? '+' + phone : phone;
+
     const savedSettings = localStorage.getItem('ybank_merchant_settings');
     if (savedSettings) {
       try {
-        return JSON.parse(savedSettings);
+        const parsed = JSON.parse(savedSettings);
+        parsed.phone = sanitizePhone(parsed.phone || '');
+        return parsed;
       } catch (e) {
         console.error("Failed to load merchant settings", e);
       }
@@ -38,7 +43,7 @@ const App: React.FC = () => {
       state: '',
       country: 'US',
       postalCode: '',
-      phone: '',
+      phone: '+15556667777',
       email: '',
       mcc: '5812',
       tipMin: '0',

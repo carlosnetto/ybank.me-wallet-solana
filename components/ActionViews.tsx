@@ -632,6 +632,12 @@ export const ChargeView: React.FC<ChargeProps> = ({ onCancel, address, merchantS
     e.preventDefault();
     if (!amount) return;
 
+    const phone = merchantSettings.phone || '';
+    if (!phone.startsWith('+')) {
+      setApiError('Phone number must start with + (international format, e.g. +15556667777). Please update it in Settings.');
+      return;
+    }
+
     setApiError(null);
     setStep('loading');
 
@@ -654,9 +660,17 @@ export const ChargeView: React.FC<ChargeProps> = ({ onCancel, address, merchantS
       // USDC amount in atomic units (6 decimals)
       const usdcAtomic = Math.round(parseFloat(amount) * 1e6);
 
+      // Sanitize to printable ASCII (^[ --~]*$) — replace curly quotes/apostrophes
+      // with straight equivalents, then strip anything outside 0x20–0x7E.
+      const toAscii = (s: string) => s
+        .replace(/[\u2018\u2019\u201A\u201B]/g, "'")  // curly single quotes → '
+        .replace(/[\u201C\u201D\u201E\u201F]/g, '"')  // curly double quotes → "
+        .replace(/[\u2013\u2014]/g, '-')               // en/em dash → -
+        .replace(/[^ -~]/g, '');                       // strip remaining non-ASCII
+
       const payload = {
         creditor: {
-          name: settings.businessName || settings.merchantName || "Merchant",
+          name: toAscii(settings.businessName || settings.merchantName || "Merchant"),
           email: settings.email || "",
           phone: settings.phone || "",
           address: {
@@ -714,7 +728,12 @@ export const ChargeView: React.FC<ChargeProps> = ({ onCancel, address, merchantS
       });
 
       if (!response.ok) {
-        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+        let detail = response.statusText;
+        try {
+          const errBody = await response.json();
+          detail = errBody.message || errBody.error || errBody.detail || JSON.stringify(errBody);
+        } catch { /* non-JSON body — keep statusText */ }
+        throw new Error(`Error ${response.status}: ${detail}`);
       }
 
       const data = await response.json();
@@ -878,6 +897,12 @@ export const SettingsView: React.FC<SettingsProps> = ({ onBack, settings, onUpda
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
+    if (name === 'phone') {
+      const enforced = value.startsWith('+') ? value : '+' + value.replace(/^\+*/, '');
+      setFormData(prev => ({ ...prev, phone: enforced }));
+      setSaved(false);
+      return;
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
     setSaved(false);
   };
