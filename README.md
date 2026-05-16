@@ -6,14 +6,16 @@ Originally written for Base (EVM) and rebuilt for Solana's instruction-based tra
 
 ## Features
 
+- **Installable PWA** — Add to home screen on iOS and Android for a fullscreen, app-like experience
 - **Wallet creation & import** — BIP39 mnemonic generation, HD key derivation (`m/44'/501'/0'/0'`)
 - **USDC balance & SOL gas display** — Real-time polling via Solana RPC
-- **Send USDC** — SPL token transfers with automatic associated token account creation for recipients
+- **Send USDC** — SPL token transfers with automatic associated token account creation. Scan a Solana address QR (plain base58 or `solana:` Solana Pay URI) instead of typing.
 - **Receive** — QR code with your Solana address
 - **Pay** — Scan merchant QR codes, review bill details, add tip, confirm payment
 - **Charge** — Generate payment QR codes for customers (merchant mode)
 - **Transaction history** — Parsed SPL token transfer history from on-chain data
 - **Merchant settings** — Configurable business info, tip presets, QR expiry
+- **Logout with optional wipe** — Choose to erase the recovery phrase from device storage on logout, or keep it for quick re-entry
 
 ## Tech Stack
 
@@ -46,15 +48,18 @@ The wallet connects to Solana mainnet via `https://solana-rpc.publicnode.com` (C
 ## Project Structure
 
 ```
-index.tsx                     # React DOM entry point
+index.tsx                     # React DOM entry point + service worker registration
+index.html                    # PWA meta tags, manifest link, Apple touch icon
 App.tsx                       # Main app state, routing, wallet lifecycle
 types.ts                      # TypeScript types, Solana constants
 components/
-  AuthViews.tsx               # Login, Setup, Import/Create wallet screens
-  ActionViews.tsx             # Send, Pay (QR scan), Charge (QR generate), Settings
-  DashboardComponents.tsx     # Header, balance display, transaction list, receive
+  AuthViews.tsx               # Splash, Setup, Import/Create wallet screens
+  ActionViews.tsx             # Send (with Solana QR scan), Pay, Charge, Settings
+  DashboardComponents.tsx     # Header, balance display, transaction list, receive, logout modal
 services/
   walletService.ts            # All Solana blockchain interactions
+public/                       # PWA assets: manifest.json, sw.js, icons (served as-is)
+worker.ts                     # Cloudflare Worker: strips /x9.150 prefix, proxies API, SPA fallback
 ```
 
 ## Key Constants
@@ -76,11 +81,13 @@ Output goes to `dist/`.
 
 ## Deploy
 
-Deployed to **materalabs.us/x9.150** (Cloudflare Workers, business account).
+Deployed to **materalabs.us/x9.150** (Cloudflare Workers).
 
 ```bash
 npm run build && npx wrangler deploy
 ```
+
+Wrangler uses OAuth (`npx wrangler login`) — no API token in the repo.
 
 The QR payment backend runs on `localhost:5010` and is exposed via a Cloudflare tunnel:
 
@@ -89,3 +96,10 @@ The QR payment backend runs on `localhost:5010` and is exposed via a Cloudflare 
 ```
 
 See `CLOUDFLARE.md` for full deployment and tunnel details.
+
+## Install as a PWA
+
+- **iOS Safari** — Share → Add to Home Screen
+- **Android Chrome** — three-dot menu → Install app
+
+The home-screen launch opens fullscreen with the Solana-palette icon. Service worker is a pass-through (no offline caching) so the wallet always shows fresh balances.

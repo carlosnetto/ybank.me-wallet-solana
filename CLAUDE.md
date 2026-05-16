@@ -8,20 +8,23 @@ The original Base version lives at `/Users/cnetto/Git/ybank.me-wallet` and shoul
 
 ## Current State
 
-The port to Solana is **complete and functional**. The app handles wallet creation/import, USDC balance display, sending USDC, receiving (QR), merchant payment flows, and transaction history — all on Solana mainnet.
+The port to Solana is **complete and functional**. The app handles wallet creation/import, USDC balance display, sending USDC (with Solana QR scan), receiving (QR), merchant payment flows, and transaction history — all on Solana mainnet. Installable as a PWA on iOS and Android.
 
 ## Architecture Overview
 
 ```
-index.tsx                     # React DOM entry point
+index.tsx                     # React DOM entry point + service worker registration
+index.html                    # PWA meta tags, manifest link, Apple touch icon
 App.tsx                       # Main app state, routing, wallet lifecycle
 types.ts                      # TypeScript types, Solana constants
 components/
-  AuthViews.tsx               # Login, Setup, Import/Create wallet screens
-  ActionViews.tsx             # Send, Pay (QR scan), Charge (QR generate), Settings
-  DashboardComponents.tsx     # Header, balance display, transaction list, receive
+  AuthViews.tsx               # Splash (Enter button), Setup, Import/Create wallet screens
+  ActionViews.tsx             # Send (with SolanaQRScanner), Pay, Charge, Settings
+  DashboardComponents.tsx     # Header, balance, transaction list, receive, LogoutModal (erase-or-keep)
 services/
   walletService.ts            # All Solana blockchain interactions
+public/                       # PWA static assets: manifest.json, sw.js, icons
+worker.ts                     # Cloudflare Worker: strips /x9.150 prefix, proxies API, SPA fallback
 ```
 
 ## Dependencies (Solana Stack)
@@ -66,7 +69,7 @@ For production, consider a dedicated RPC provider (Helius, QuickNode, etc.) for 
 | `validateMnemonic(phrase)` | BIP39 mnemonic validation |
 | `getSOLBalance(address)` | Lamports → SOL (10^9) |
 | `getUSDCBalance(address)` | ATA lookup → SPL token balance, with `getTokenAccountsByOwner` fallback |
-| `sendUSDC(keypair, to, amount)` | Simulate → sign → send → confirm (handles ATA creation for recipient) |
+| `sendUSDC(keypair, to, amount)` | Simulate → sign → send → HTTP-poll `getSignatureStatus` until confirmed (handles ATA creation for recipient) |
 | `getRecentTransactions(address)` | `getSignaturesForAddress` on ATA → `getParsedTransaction` → parse `transferChecked` instructions |
 
 ### Send Flow Details
@@ -77,7 +80,9 @@ For production, consider a dedicated RPC provider (Helius, QuickNode, etc.) for 
 3. **Simulate** transaction to catch errors before signing (insufficient SOL/USDC, invalid accounts)
 4. Sign with keypair
 5. Send raw transaction
-6. Confirm with blockhash expiry tracking (retries if blockhash expires)
+6. **HTTP-poll `getSignatureStatus`** every 2 s until `confirmed`/`finalized` or 90 s timeout. Final history-search check before declaring expiry.
+
+**Do NOT use `connection.confirmTransaction(...)` here.** It depends on the RPC's WebSocket `signatureSubscribe`, which public RPCs (notably `solana-rpc.publicnode.com`) no longer serve reliably — the result is false "Transaction expired" errors when the tx actually landed. See HISTORY.md / Lesson 8.
 
 ### Error Handling
 
@@ -105,6 +110,19 @@ Key details:
 4. **Simulate before sending** — Catches insufficient balance/fees before the user waits for a failed transaction.
 5. **Never use `100vh` for mobile layouts** — iOS Safari's `100vh` includes the area behind the browser toolbar. Use `100dvh` instead, and use `env(safe-area-inset-bottom)` for bottom-positioned elements. See HISTORY.md for the full story.
 6. **`getParsedTransactions` (plural) fails on public RPCs** — It sends a JSON-RPC batch request. `publicnode.com` limits batch `getTransaction` to 1 call, returning 400. Use `Promise.all` over individual `getParsedTransaction` (singular) calls instead — same parallelism, separate HTTP requests. See HISTORY.md.
+7. **Public RPC WebSockets are unreliable for `signatureSubscribe`** — `solana-rpc.publicnode.com` stopped serving the Solana JSON-RPC WS protocol on its hostname (the upgrade falls through to the marketing site). `@solana/web3.js` `confirmTransaction(...)` relies on WS subscriptions and silently times out → false "Transaction expired" errors. Confirm via HTTP-polled `getSignatureStatus` instead.
+8. **localStorage is the only wallet store** — `solana_wallet_mnemonic` lives in plain `localStorage`, readable by any JS on the origin. The Tailwind CDN in `index.html` is a supply-chain consideration. Logout offers an explicit "erase phrase from device" path.
+
+## PWA
+
+The app is installable on iOS and Android. Configuration lives in:
+- `public/manifest.json` — name, scope `/x9.150/`, icons, theme color
+- `public/sw.js` — pass-through service worker (no caching; the wallet must always show fresh chain state)
+- `public/{icon-192,icon-512,apple-touch-icon,favicon-32}.png` — generated from `public/icon.svg` (Solana-palette gradient + wallet glyph). Replace `icon.svg` and regenerate the PNGs with `magick -background none icon.svg -resize <SIZE> <name>.png` to rebrand.
+- `index.html` — `apple-mobile-web-app-capable`, `theme-color`, manifest link
+- `index.tsx` — registers the service worker at `${BASE_URL}sw.js` with scope `${BASE_URL}` so it works under the `/x9.150/` sub-path
+
+Status bar style is `default` (white bar, iOS handles spacing) — keeps the existing layout untouched. Changing to `black-translucent` requires adding `env(safe-area-inset-top)` padding to the app header.
 
 ## Ecosystem Direction (As of Feb 2026)
 
@@ -160,5 +178,6 @@ The app communicates with a QR payment server (`VITE_QRAPPSERVER_URL`, default `
 - Overall UI/UX flow and component structure
 - QR code scanning/generation logic (jsqr, qrcode.react)
 - Merchant settings and localStorage patterns
-- Authentication flow (login/setup screens)
+- Splash → Setup → Create/Import/Continue flow (the Enter button on the splash is a plain navigation, not an auth gate)
+- The HTTP-poll confirmation in `sendUSDC` (see Lesson 7)
 - Tailwind styling
