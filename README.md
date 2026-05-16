@@ -2,7 +2,7 @@
 
 A React/TypeScript mobile payment wallet for **Solana**, supporting USDC transfers, QR-based payments, and merchant charging.
 
-Ported from the [Base (EVM) version](https://github.com/carlosnetto/ybank.me-wallet) — same UI/UX, rebuilt for Solana's instruction-based transaction model with SPL token support.
+Originally written for Base (EVM) and rebuilt for Solana's instruction-based transaction model with SPL token support — same UI/UX.
 
 ## Features
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PublicKey } from '@solana/web3.js';
-import { Loader2, Camera, X, Check, ArrowRight, DollarSign, Save, ChevronLeft, AlertCircle, Eye, EyeOff, Copy, ExternalLink, Plus, Minus, ShoppingBag, Info } from 'lucide-react';
+import { Loader2, Camera, X, Check, ArrowRight, DollarSign, Save, ChevronLeft, AlertCircle, Eye, EyeOff, Copy, ExternalLink, Plus, Minus, ShoppingBag, Info, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getRecentTransactions } from '../services/walletService';
 import jsQR from 'jsqr';
@@ -26,6 +26,134 @@ const DEFAULT_SETTINGS = {
 
 const QRAPPSERVER_URL = import.meta.env.VITE_QRAPPSERVER_URL || '';
 
+// --- SOLANA QR SCANNER ---
+// Accepts a plain base58 Solana address or a Solana Pay URI (solana:<addr>?amount=...).
+interface SolanaScannerProps {
+  onScan: (address: string, amount?: string) => void;
+  onClose: () => void;
+}
+
+const parseSolanaQR = (raw: string): { address: string; amount?: string } | null => {
+  const text = raw.trim();
+  const uriMatch = text.match(/^solana:([^?#]+)(?:\?([^#]*))?/i);
+  if (uriMatch) {
+    try {
+      const address = decodeURIComponent(uriMatch[1]);
+      new PublicKey(address);
+      const params = new URLSearchParams(uriMatch[2] || '');
+      return { address, amount: params.get('amount') ?? undefined };
+    } catch { return null; }
+  }
+  try {
+    new PublicKey(text);
+    return { address: text };
+  } catch { return null; }
+};
+
+const SolanaQRScanner: React.FC<SolanaScannerProps> = ({ onScan, onClose }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let frameId: number;
+    let stopped = false;
+
+    const tick = () => {
+      if (stopped) return;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (ctx) {
+          canvas.height = video.videoHeight;
+          canvas.width = video.videoWidth;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(data.data, data.width, data.height, { inversionAttempts: 'dontInvert' });
+          if (code) {
+            const parsed = parseSolanaQR(code.data);
+            if (parsed) {
+              stopped = true;
+              onScan(parsed.address, parsed.amount);
+              return;
+            }
+            setError('Not a Solana address QR code.');
+          }
+        }
+      }
+      frameId = requestAnimationFrame(tick);
+    };
+
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        if (videoRef.current) videoRef.current.srcObject = stream;
+        setHasPermission(true);
+        frameId = requestAnimationFrame(tick);
+      } catch (err) {
+        console.error('Camera access denied', err);
+        setHasPermission(false);
+      }
+    })();
+
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(frameId);
+      stream?.getTracks().forEach(t => t.stop());
+    };
+  }, [onScan]);
+
+  return (
+    <div className="fixed inset-0 bg-black z-50 flex flex-col">
+      <div className="relative flex-1 overflow-hidden">
+        {hasPermission === false ? (
+          <div className="flex items-center justify-center h-full text-white/70">
+            <p>Camera permission denied</p>
+          </div>
+        ) : (
+          <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+        )}
+
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-64 h-64 border-2 border-white/50 rounded-xl relative">
+            <div className="absolute top-0 left-0 w-6 h-6 border-l-4 border-t-4 border-blue-500 -ml-1 -mt-1 rounded-tl-lg"></div>
+            <div className="absolute top-0 right-0 w-6 h-6 border-r-4 border-t-4 border-blue-500 -mr-1 -mt-1 rounded-tr-lg"></div>
+            <div className="absolute bottom-0 left-0 w-6 h-6 border-l-4 border-b-4 border-blue-500 -ml-1 -mb-1 rounded-bl-lg"></div>
+            <div className="absolute bottom-0 right-0 w-6 h-6 border-r-4 border-b-4 border-blue-500 -mr-1 -mb-1 rounded-br-lg"></div>
+          </div>
+        </div>
+
+        <div className="absolute top-8 w-full text-center">
+          <span className="bg-black/40 text-white px-4 py-2 rounded-full text-sm backdrop-blur-md">
+            Scan Solana Address QR
+          </span>
+        </div>
+
+        <canvas ref={canvasRef} className="hidden" />
+
+        {error && (
+          <div className="absolute top-24 left-6 right-6 p-4 bg-red-500/90 text-white rounded-xl flex items-center gap-3 backdrop-blur-md">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <p className="text-xs font-medium">{error}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-black p-6 pb-10 flex justify-center">
+        <button
+          onClick={onClose}
+          className="bg-white/10 text-white hover:bg-white/20 px-8 py-3 rounded-full font-medium transition-colors flex items-center gap-2"
+        >
+          <X className="w-4 h-4" /> Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // --- SEND VIEW ---
 interface SendProps {
   onSend: (to: string, amount: string) => Promise<void>;
@@ -39,6 +167,7 @@ export const SendView: React.FC<SendProps> = ({ onSend, onCancel, balance }) => 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,6 +211,20 @@ export const SendView: React.FC<SendProps> = ({ onSend, onCancel, balance }) => 
     );
   }
 
+  if (showScanner) {
+    return (
+      <SolanaQRScanner
+        onScan={(addr, scannedAmount) => {
+          setTo(addr);
+          if (scannedAmount && !amount) setAmount(scannedAmount);
+          setShowScanner(false);
+          setError(null);
+        }}
+        onClose={() => setShowScanner(false)}
+      />
+    );
+  }
+
   return (
     <div className="p-6 pt-10 h-full flex flex-col">
       <h2 className="text-2xl font-bold text-gray-900 mb-6">Send USDC</h2>
@@ -89,13 +232,23 @@ export const SendView: React.FC<SendProps> = ({ onSend, onCancel, balance }) => 
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Recipient Address</label>
-          <input
-            type="text"
-            placeholder="Solana address..."
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-4 font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          />
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Solana address..."
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 pl-4 pr-14 font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setShowScanner(true)}
+              aria-label="Scan Solana QR code"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+            >
+              <QrCode className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div>

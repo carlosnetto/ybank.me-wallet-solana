@@ -83,7 +83,12 @@ export const WalletHeader: React.FC<HeaderProps> = ({ balance, solBalance, addre
   );
 };
 
-export const LogoutModal: React.FC<{ isOpen: boolean; onConfirm: () => void; onCancel: () => void }> = ({ isOpen, onConfirm, onCancel }) => {
+export const LogoutModal: React.FC<{
+  isOpen: boolean;
+  onLogoutKeep: () => void;
+  onLogoutErase: () => void;
+  onCancel: () => void;
+}> = ({ isOpen, onLogoutKeep, onLogoutErase, onCancel }) => {
   if (!isOpen) return null;
 
   return (
@@ -91,21 +96,30 @@ export const LogoutModal: React.FC<{ isOpen: boolean; onConfirm: () => void; onC
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel}></div>
       <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm relative z-10 animate-in zoom-in-95 duration-200">
         <h3 className="text-xl font-bold text-gray-900 mb-2">Log Out?</h3>
-        <p className="text-gray-500 mb-6">
-          Are you sure you want to log out? Your secure wallet words will remain on this device unless you choose to replace them later.
+        <p className="text-gray-500 text-sm mb-5">
+          Erase your 12-word recovery phrase from this device on the way out?
         </p>
-        <div className="flex gap-3">
+        <p className="text-xs text-gray-400 mb-6 leading-relaxed">
+          Keeping it lets you log back in without re-typing. Erasing protects it from anyone with access to this device — you'll need to re-enter the 12 words to come back.
+        </p>
+        <div className="flex flex-col gap-2">
           <button
-            onClick={onCancel}
-            className="flex-1 py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors"
+            onClick={onLogoutErase}
+            className="w-full py-3 px-4 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl transition-colors"
           >
-            Cancel
+            Erase & Log Out
           </button>
           <button
-            onClick={onConfirm}
-            className="flex-1 py-3 px-4 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl transition-colors"
+            onClick={onLogoutKeep}
+            className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors"
           >
-            Log Out
+            Keep on Device & Log Out
+          </button>
+          <button
+            onClick={onCancel}
+            className="w-full py-2 text-gray-500 hover:text-gray-700 text-sm font-medium transition-colors"
+          >
+            Cancel
           </button>
         </div>
       </div>

@@ -69,7 +69,7 @@ const App: React.FC = () => {
       initializeWallet(savedMnemonic);
     } else {
       setView(ViewState.LOGIN);
-      console.log("No session found, showing login.");
+      console.log("No session found, showing splash.");
     }
   }, []);
 
@@ -203,9 +203,7 @@ const App: React.FC = () => {
     }
   };
 
-  // Google Login entry point
-  const handleLogin = () => {
-    // Always go to setup screen to allow user to choose between existing, new, or import
+  const handleEnter = () => {
     setView(ViewState.SETUP);
   };
 
@@ -263,11 +261,20 @@ const App: React.FC = () => {
     }
   };
 
-  const confirmLogout = () => {
+  const logout = (erasePhrase: boolean) => {
     setShowLogoutModal(false);
-    // Remove logged_in flag but keep mnemonic for "Continue" functionality
     localStorage.removeItem('solana_wallet_logged_in');
+    if (erasePhrase) {
+      localStorage.removeItem('solana_wallet_mnemonic');
+    }
     setWallet(null);
+    setWalletState({
+      address: '',
+      mnemonic: null,
+      balance: '0.00',
+      solBalance: '0.00',
+      transactions: [],
+    });
     setView(ViewState.LOGIN);
   };
 
@@ -296,7 +303,7 @@ const App: React.FC = () => {
   // Render Logic
   if (view === ViewState.LOGIN) return (
     <div className={containerClasses}>
-      <LoginView onLogin={handleLogin} />
+      <LoginView onEnter={handleEnter} />
     </div>
   );
 
@@ -347,7 +354,8 @@ const App: React.FC = () => {
 
       <LogoutModal
         isOpen={showLogoutModal}
-        onConfirm={confirmLogout}
+        onLogoutKeep={() => logout(false)}
+        onLogoutErase={() => logout(true)}
         onCancel={() => setShowLogoutModal(false)}
       />
 

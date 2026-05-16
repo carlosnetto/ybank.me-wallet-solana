@@ -142,7 +142,7 @@ export const sendUSDC = async (
     );
 
     // Set recent blockhash and fee payer before simulation
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    const { blockhash } = await connection.getLatestBlockhash('confirmed');
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = senderPubkey;
 
@@ -165,13 +165,45 @@ export const sendUSDC = async (
     transaction.sign(keypair);
     const signature = await connection.sendRawTransaction(transaction.serialize());
 
-    // Wait for confirmation with blockhash expiry awareness
-    await connection.confirmTransaction(
-      { signature, blockhash, lastValidBlockHeight },
-      'confirmed'
-    );
+    // HTTP-poll signature status instead of confirmTransaction — public RPC WebSockets are unreliable, causing false expiry errors even when the tx landed.
+    const POLL_INTERVAL_MS = 2000;
+    const MAX_WAIT_MS = 90_000; // blockhash valid ~60s; 90s gives a buffer
+    const startTime = Date.now();
 
-    return signature;
+    while (Date.now() - startTime < MAX_WAIT_MS) {
+      let status: any = null;
+      try {
+        status = (await connection.getSignatureStatus(signature, {
+          searchTransactionHistory: false,
+        })).value;
+      } catch {
+        // Transient RPC error — keep polling
+      }
+
+      if (status?.err) {
+        throw new Error(`Transaction failed on-chain: ${JSON.stringify(status.err)}`);
+      }
+      if (
+        status?.confirmationStatus === 'confirmed' ||
+        status?.confirmationStatus === 'finalized'
+      ) {
+        return signature;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+
+    // Timed out — final check with history search before declaring expired
+    const finalStatus = (await connection.getSignatureStatus(signature, {
+      searchTransactionHistory: true,
+    })).value;
+    if (
+      finalStatus?.confirmationStatus === 'confirmed' ||
+      finalStatus?.confirmationStatus === 'finalized'
+    ) {
+      return signature;
+    }
+    throw new Error('Blockhash not found');
   } catch (error: any) {
     console.error("Send Transaction Error:", error);
 

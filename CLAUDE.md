@@ -131,16 +131,10 @@ Resources:
 
 ## Claude Code Skills
 
-Reusable skills extracted from this project live at **https://github.com/carlosnetto/claude-skills**:
+Reusable skills extracted from this project:
 
 - **`solana-wallet-skill`** — Solana wallet/payment patterns (RPC, key derivation, SPL tokens, transactions, error handling, Vite config)
 - **`cloudflare-deployment-skill`** — Cloudflare Workers deployment (routes, tunnels, shared servers, multi-account, sub-path serving, security)
-
-Install with:
-```bash
-bash claude-skills/solana-wallet-skill/install.sh
-bash claude-skills/cloudflare-deployment-skill/install.sh
-```
 
 ## Deployment
 

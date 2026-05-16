@@ -1,7 +1,6 @@
 export enum ViewState {
   LOGIN = 'LOGIN',
   SETUP = 'SETUP',
-  WALLET_CHOICE = 'WALLET_CHOICE',
   IMPORT = 'IMPORT',
   DASHBOARD = 'DASHBOARD',
   SEND = 'SEND',

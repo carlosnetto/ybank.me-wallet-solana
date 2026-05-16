@@ -1,0 +1,16 @@
+{
+  "name": "YBank.me Wallet",
+  "short_name": "YBank",
+  "description": "Solana USDC wallet with QR-based payments",
+  "start_url": "/x9.150/",
+  "scope": "/x9.150/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F9FAFB",
+  "theme_color": "#2563EB",
+  "icons": [
+    { "src": "/x9.150/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/x9.150/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/x9.150/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
